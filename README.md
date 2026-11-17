@@ -14,7 +14,7 @@
   ·
   <a href="#features">Features</a>
   ·
-  <a href="#build-it-yourself">Build it yourself</a>
+  <a href="#how-it-works">How it works</a>
 </p>
 
 <p align="center">
@@ -82,7 +82,7 @@ It works on Android 7 and newer, on 64-bit and older 32-bit phones. Some phones 
 
 ### Windows
 
-There's no Windows installer in the releases yet. [Build it yourself](#build-it-yourself) with one command.
+There's no Windows download yet.
 
 ## How it works
 
@@ -107,39 +107,6 @@ There's no server behind Cadence and no local web server either: the app streams
 
 It's built with [Tauri 2](https://tauri.app): a Rust core and a plain TypeScript page, no framework.
 
-## Build it yourself
-
-You need [Rust](https://rustup.rs), [Node.js](https://nodejs.org) 18 or newer, and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your system.
-
-```bash
-npm install
-npm run tauri dev        # run the desktop app with hot reload
-npm run tauri build      # Windows installer in src-tauri/target/release/bundle
-cd src-tauri && cargo test
-```
-
-YouTube playback on the desktop needs a JavaScript runtime that yt-dlp can use: [Deno](https://deno.com) or Node.js. Cadence downloads yt-dlp itself on first use and keeps it up to date.
-
-### Android
-
-You need Java 21, the Android SDK (platform 36, build-tools 36.1.0), NDK 28.2 and the Rust Android targets:
-
-```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-```
-
-`scripts/android.mjs` expects them in `%LOCALAPPDATA%\Android` (`jdk-21` and `Sdk`) on Windows, and sets everything up for Tauri:
-
-```bash
-node scripts/android.mjs build --apk --debug --target aarch64   # test APK for a phone
-node scripts/android.mjs build --apk --debug --target x86_64    # test APK for the emulator
-node scripts/android.mjs build --apk --target aarch64 armv7     # release APK
-```
-
-Release APKs are signed with a key kept outside the repository, in a `.signing` folder next to it (`cadence-release.jks` and `keystore.properties` with its path and passwords). Without it, release APKs come out unsigned. Android only installs an update over an app signed with the same key, so to try a build of your own, uninstall the official app first.
-
-To change the app icon, replace `app-icon.png`, run `npx tauri icon app-icon.png`, then `node scripts/make-ico.mjs`.
-
 ## Project layout
 
 | Path | What's there |
@@ -153,10 +120,6 @@ To change the app icon, replace `app-icon.png`, run `npx tauri icon app-icon.png
 ## A note on YouTube
 
 Cadence isn't affiliated with or endorsed by YouTube, Google, Spotify or Apple. Playing YouTube without its official player goes against YouTube's Terms of Service. Cadence is a personal, non-commercial project for educational use; use it at your own discretion.
-
-## Thanks
-
-Cadence stands on the work of [yt-dlp](https://github.com/yt-dlp/yt-dlp), [youtubedl-android](https://github.com/JunkFood02/youtubedl-android), [Tauri](https://tauri.app), [LRCLIB](https://lrclib.net), [lofty](https://github.com/Serial-ATA/lofty-rs), [quick-xml](https://github.com/tafia/quick-xml), [SQLite](https://sqlite.org), and the fonts [Bricolage Grotesque](https://github.com/ateliertriay/bricolage) and [DM Mono](https://github.com/googlefonts/dm-mono) (SIL Open Font License).
 
 ## License
 
