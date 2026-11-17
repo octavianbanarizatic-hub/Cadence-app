@@ -55,8 +55,11 @@ export function trackPodcasts(player: Player, changed: () => void) {
   const save = () => {
     if (!current || resuming) return;
     const id = current.id.slice(4);
-    const played = end > 0 && pos > end - PLAYED_NEAR_END;
     const before = progress.get(id);
+    // Heard stays heard: marked as played by hand, or once near the end.
+    // Only playing it again from the list (`replay`) or "Mark as not
+    // played" makes it new again.
+    const played = !!before?.played || (end > 0 && pos > end - PLAYED_NEAR_END);
     savedAt = pos;
     if (before && before.played === played && Math.abs(before.position - pos) < 1) return;
     progress.set(id, { position: pos, played });
@@ -104,12 +107,20 @@ export function trackPodcasts(player: Player, changed: () => void) {
     const a = player.audio;
     pos = a.currentTime;
     if (isFinite(a.duration)) end = a.duration;
-    if (Math.abs(pos - savedAt) >= SAVE_EVERY) save();
+    // Saved early once, so Home's "Your episodes" has it straight away.
+    if (Math.abs(pos - savedAt) >= SAVE_EVERY || (savedAt < 1 && pos > 2)) save();
   });
   player.addEventListener("state", () => {
     if (current && !player.playing) save();
   });
   onAway((away) => away && save());
+}
+
+/** An episode heard before, played again: it starts over and counts as new. */
+export function replay(id: string) {
+  if (!progress.get(id)?.played) return;
+  progress.set(id, { position: 0, played: false });
+  void api.podcastProgress(id, 0, false).catch(() => {});
 }
 
 /** Sets the speed for podcasts, at once if an episode is playing. */

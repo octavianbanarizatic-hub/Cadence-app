@@ -28,7 +28,7 @@ import {
 } from "./api";
 import { icon, mark, MARK, type IconName } from "./icons";
 import { trackListening } from "./listening";
-import { episodeDate, episodeTime, episodeTrack, isEpisode, learn, progress, setSpeed, showOf, speed, SPEEDS, trackPodcasts } from "./podcasts";
+import { episodeDate, episodeTime, episodeTrack, isEpisode, learn, progress, replay, setSpeed, showOf, speed, SPEEDS, trackPodcasts } from "./podcasts";
 import type { MiniCommand, MiniState } from "./mini-link";
 import { EQ_BANDS, EQ_PRESETS, MAX_CROSSFADE, Player, shuffled } from "./player";
 import { settings } from "./settings";
@@ -3415,21 +3415,45 @@ function mountEpisodes(el: HTMLElement, eps: Episode[], withShow: boolean) {
   markPlaying();
   el.onclick = (ev) => {
     const row = (ev.target as HTMLElement).closest<HTMLElement>(".episode");
-    if (!row) return;
-    const e = eps[Number(row.dataset.i)];
+    // The list as drawn now: Home's can lose episodes marked as played.
+    const e = row && episodeLists.get(el)?.eps[Number(row.dataset.i)];
+    if (!e) return;
     const track = episodeTrack(e);
     const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
     if (act === "more") return episodeMenu(ev, track);
-    if (player.current?.id === track.id) return player.toggle();
-    player.playList([track], 0, e.showTitle);
+    const heard = progress.get(e.id)?.played;
+    replay(e.id);
+    if (player.current?.id !== track.id) return player.playList([track], 0, e.showTitle);
+    if (!heard) return player.toggle();
+    player.seek(0);
+    if (!player.playing) player.toggle();
   };
+}
+
+/** Play or pause on each episode row, as the player goes. */
+function updateEpisodeButtons() {
+  const id = player.playing ? player.current?.id : undefined;
+  document.querySelectorAll<HTMLElement>(".episode").forEach((row) => {
+    const btn = row.querySelector<HTMLElement>(".ep-play");
+    const name = row.dataset.id === id ? "pause" : "play";
+    if (btn && btn.dataset.shows !== name) {
+      setIcon(btn, name, 20);
+      btn.dataset.shows = name;
+    }
+  });
 }
 
 /** Draws episode rows again: played, time left, downloads, the one playing. */
 function refreshEpisodeRows() {
-  for (const [el, { eps, withShow }] of episodeLists) {
-    if (el.isConnected) el.innerHTML = episodeRows(eps, withShow);
-    else episodeLists.delete(el);
+  for (const [el, list] of episodeLists) {
+    if (!el.isConnected) {
+      episodeLists.delete(el);
+      continue;
+    }
+    // Home lists episodes still to hear: one marked as played leaves it.
+    if (list.withShow) list.eps = list.eps.filter((e) => !progress.get(e.id)?.played);
+    el.innerHTML = episodeRows(list.eps, list.withShow);
+    if (list.withShow && !list.eps.length) el.closest(".page-section")?.remove();
   }
   markPlaying();
 }
@@ -3453,11 +3477,21 @@ function episodeMenu(e: MouseEvent, track: Track, extra: MenuItem[] = []) {
       icon: "check",
       on: !!spot?.played,
       run: () => {
-        const played = !spot?.played;
-        const position = played ? 0 : (spot?.position ?? 0);
-        progress.set(id, { position, played });
-        void api.podcastProgress(id, position, played).catch(() => {});
-        refreshEpisodeRows();
+        const before = { position: spot?.position ?? 0, played: !!spot?.played };
+        const set = (s: { position: number; played: boolean }) => {
+          progress.set(id, s);
+          void api.podcastProgress(id, s.position, s.played).catch(() => {});
+          refreshEpisodeRows();
+        };
+        set(before.played ? { position: before.position, played: false } : { position: 0, played: true });
+        toast(before.played ? "Marked as not played" : "Marked as played", "info", {
+          label: "Undo",
+          run: () => {
+            set(before);
+            // Home took it off its list; bring it back.
+            if (view === "home") void renderNewEpisodes();
+          },
+        });
       },
     },
   ];
@@ -4137,7 +4171,9 @@ async function loadLyrics(force = false) {
   if (isEpisode(t)) {
     lyricsView.trackId = t.id;
     lyricsView.token++;
-    return renderLyrics({ kind: "error", message: "Podcasts don't have lyrics." });
+    renderLyrics(null);
+    $("#lyrics-body").innerHTML = lyricsNote("podcast", "No lyrics here", "Podcasts don't have lyrics.");
+    return;
   }
   if (t.id === lyricsView.trackId && !force) {
     // Reopened on the same song: just catch up with the playback position.
@@ -4877,7 +4913,7 @@ async function boot() {
   trackListening(player);
   trackPodcasts(player, refreshEpisodeRows);
   // Episode rows show a pause button on the one playing.
-  player.addEventListener("state", () => episodeLists.size && refreshEpisodeRows());
+  player.addEventListener("state", updateEpisodeButtons);
   await bindMini();
   document.querySelectorAll<HTMLElement>(".nav-item[data-view]").forEach((b) => {
     b.onclick = () => setView(b.dataset.view as Exclude<View, "page">);

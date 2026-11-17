@@ -120,12 +120,8 @@ h2 {
   letter-spacing: -0.02em;
 }
 
-.brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #e5343c;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+.brand .mark {
+  flex: none;
 }
 
 .nav-item {

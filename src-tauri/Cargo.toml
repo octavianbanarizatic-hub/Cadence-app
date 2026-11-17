@@ -1,6 +1,6 @@
 [package]
 name = "cadence"
-version = "1.0.0"
+version = "1.0.1"
 description = "A fast, ad-free music player for YouTube Music, your own music files and podcasts"
 license = "GPL-3.0-or-later"
 edition = "2021"
