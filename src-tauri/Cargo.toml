@@ -1,0 +1,53 @@
+[package]
+name = "cadence"
+version = "1.0.0"
+description = "A fast, ad-free music player for YouTube Music, your own music files and podcasts"
+license = "GPL-3.0-or-later"
+edition = "2021"
+
+[lib]
+name = "cadence_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+futures-util = "0.3"
+rusqlite = { version = "0.41", features = ["bundled"] }
+lofty = "0.25"
+walkdir = "2"
+sha2 = "0.10"
+urlencoding = "2"
+# Podcast feeds (RSS).
+quick-xml = "0.37"
+
+# Desktop only: phones have one window and the system restores it.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+
+# Runs yt-dlp inside the app (with its own Python), plus phone-only native parts.
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-cadence-android = { path = "android-plugin" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_System_LibraryLoader",
+  "Win32_UI_HiDpi",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+

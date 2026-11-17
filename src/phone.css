@@ -1,0 +1,3886 @@
+/* Phone layout (Android): the "Afterhours" design. Near-black rooms lit by
+   the cover art, with red only where your thumb goes: primary actions, active
+   states and progress. Every rule hangs off `html.phone`, which main.ts sets
+   on Android only, so the desktop layout never changes. The page sits between
+   the system bars: MainActivity pads the web view by their size. */
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-weight: 400 800;
+  font-stretch: 75% 100%;
+  font-display: swap;
+  src: url("./fonts/bricolage-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-weight: 400 800;
+  font-stretch: 75% 100%;
+  font-display: swap;
+  src: url("./fonts/bricolage-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/dm-mono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/dm-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/dm-mono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/dm-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Parts only phones show. */
+.tabbar,
+.np-close,
+.np-from,
+.np-more,
+.now-dl,
+.panel-close,
+.panel-back,
+.q-transport,
+.lbl,
+.brand-row,
+.search-clear,
+.head-tile,
+.head-count,
+.np-bars,
+.pull {
+  display: none;
+}
+
+/* ---- tokens ------------------------------------------------------------------ */
+
+.phone {
+  --bg: oklch(0.13 0.014 265);
+  --sunken: oklch(0.11 0.012 265);
+  --surface: oklch(0.18 0.016 268);
+  --surface-2: oklch(0.21 0.02 270);
+  --surface-3: oklch(0.25 0.02 268);
+  --line: oklch(0.3 0.014 265);
+  --border: var(--line);
+  --outline: oklch(0.5 0.014 265);
+  --text: oklch(0.95 0.008 265);
+  --text-2: oklch(0.74 0.014 265);
+  --text-3: oklch(0.52 0.012 265);
+  --red: oklch(0.63 0.22 25);
+  --red-pressed: oklch(0.55 0.2 25);
+  --red-text: oklch(0.7 0.19 25);
+  --red-glow: oklch(0.63 0.22 25 / 0.45);
+  --label: oklch(0.93 0.012 265);
+  --ok: oklch(0.76 0.15 155);
+  --alert: oklch(0.8 0.14 75);
+  --warn: var(--alert);
+  --danger: var(--alert);
+  --scrim: oklch(0.05 0.01 265 / 0.64);
+  --shadow: 0 12px 30px oklch(0.06 0.02 280 / 0.6);
+  /* The desktop's accent is the cover's color; here it is always red. */
+  --accent: var(--red);
+  --on-accent: var(--bg);
+  --accent-soft: var(--surface-3);
+  --accent-text: var(--red-text);
+  /* The cover's color, set by main.ts; it only tints the glow behind art. */
+  --art: oklch(0.6 0.16 290);
+  --display: "Bricolage Grotesque", "Arial Narrow", sans-serif;
+  --mono: "DM Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --tabbar-h: 72px;
+  --mini-h: 66px;
+  /* The navigation bar's height: the page draws behind it (MainActivity),
+     so whatever sits on the bottom edge is padded by it. Set by main.ts. */
+  --nav-bottom: 0px;
+  /* Everything at the bottom: the tabs and the navigation bar under them. */
+  --bottom-bar: calc(var(--tabbar-h) + var(--nav-bottom));
+  /* The room the last thing on a page keeps above the mini-player or the tabs. */
+  --page-end: 44px;
+  color-scheme: dark;
+  font-family: var(--display);
+  font-size: 16px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Touch screens have no hover; keep pressed feedback only. */
+.phone * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Phones scroll by touch; the desktop scrollbar would only take up room. */
+.phone ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.phone h1,
+.phone h2 {
+  letter-spacing: normal;
+}
+
+/* Press: buttons shrink a little under the finger, rows light up. */
+.phone .btn,
+.phone .icon-btn,
+.phone .play-btn {
+  transition: scale 0.16s ease-out, background 0.2s;
+}
+
+.phone .btn:active,
+.phone .play-btn:active {
+  scale: 0.96;
+  transition-duration: 0.09s;
+}
+
+.phone .icon-btn:active {
+  scale: 0.94;
+  background: none;
+  transition-duration: 0.09s;
+}
+
+.phone .icon-btn:hover,
+.phone .btn:hover {
+  background: none;
+  filter: none;
+}
+
+.phone .track:active,
+.phone .q-item:not(.current):active,
+.phone .dl-row:active,
+.phone .menu button:active,
+.phone .setting:active {
+  background: var(--surface-3);
+}
+
+/* Enter: rows land softly, a few at a time. */
+@keyframes enter {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.phone .track:nth-child(-n + 6) {
+  animation: enter 0.18s cubic-bezier(0, 0, 0, 1) both;
+}
+
+.phone .track:nth-child(2) {
+  animation-delay: 30ms;
+}
+.phone .track:nth-child(3) {
+  animation-delay: 60ms;
+}
+.phone .track:nth-child(4) {
+  animation-delay: 90ms;
+}
+.phone .track:nth-child(5) {
+  animation-delay: 120ms;
+}
+.phone .track:nth-child(6) {
+  animation-delay: 150ms;
+}
+
+/* ---- type ------------------------------------------------------------------- */
+
+.phone .view-head h1,
+.phone .hero h1,
+.phone .queue-head h2,
+.phone .playlists-head span,
+.phone .empty h2,
+.phone .no-results h2,
+.phone .player.expanded .now-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-stretch: 75%;
+  letter-spacing: -0.02em;
+}
+
+.phone .mono-label,
+.phone .section-label,
+.phone .dl-pending h2,
+.phone .q-label,
+.phone .head-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* Artist names on a light chip, in mono capitals. */
+.phone .chip-label {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 7px 3px;
+  border-radius: 4px;
+  background: var(--label);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* ---- shell ------------------------------------------------------------------ */
+
+.phone .app {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+.phone .main {
+  position: relative;
+  grid-area: 1 / 1;
+  padding: 0 24px calc(var(--bottom-bar) + var(--page-end));
+  background: var(--bg);
+  /* Search pulls down to refresh instead of stretching. */
+  overscroll-behavior-y: none;
+}
+
+/* Room to scroll the last row out from under the tabs and the mini-player. */
+.phone .app:has(.player:not(.idle)) .main {
+  padding-bottom: calc(var(--bottom-bar) + 10px + var(--mini-h) + var(--page-end));
+}
+
+/* A page opened from a tab fades up into place. */
+.phone .main.entering > * {
+  animation: view-in 0.28s var(--ease) both;
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Album, artist and playlist headers glow with their cover's color. */
+.phone .main:is([data-view="playlist"], [data-view="album"], [data-view="artist"], [data-view="localAlbum"], [data-view="localArtist"], [data-view="category"], [data-view="shared"], [data-view="ytlist"], [data-view="mix"]) {
+  background:
+    radial-gradient(110% 520px at 25% 0, color-mix(in oklab, var(--page-art, var(--art)) 34%, var(--bg)), var(--bg) 75%) local no-repeat,
+    var(--bg);
+}
+
+.phone .view-head {
+  position: static;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0;
+  padding: 18px 0 0;
+  background: none;
+  backdrop-filter: none;
+}
+
+.phone .view-head h1 {
+  font-size: 52px;
+  line-height: 0.9;
+}
+
+.phone .head-actions {
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 12px;
+  margin: 20px 0 0;
+}
+
+.phone .view-sub {
+  margin: 10px 0 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.phone .section-label {
+  margin: 24px 0 2px;
+}
+
+/* Local folders come to phones in a later version. */
+.phone #add-folder,
+.phone #rescan,
+.phone .folders,
+.phone .scan-status {
+  display: none;
+}
+
+/* ---- buttons ---------------------------------------------------------------- */
+
+.phone .btn {
+  height: 52px;
+  padding: 0 20px;
+  gap: 10px;
+  border-radius: 26px;
+  background: none;
+  border: 1.5px solid var(--outline);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.phone .btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.phone .btn.primary {
+  padding-right: 26px;
+  border-color: transparent;
+  background: var(--red);
+  color: var(--bg);
+  box-shadow: 0 0 26px var(--red-glow);
+}
+
+.phone .btn.primary:active {
+  background: var(--red-pressed);
+}
+
+.phone .btn.danger {
+  border-color: transparent;
+  background: var(--alert);
+  color: var(--bg);
+}
+
+.phone .btn:disabled {
+  opacity: 0.5;
+}
+
+/* Liked songs' Download all sits at the end as an icon. */
+.phone .head-actions .dl-all {
+  order: 3;
+  width: 48px;
+  height: 48px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  justify-content: center;
+}
+
+.phone .dl-all span,
+.phone .add-all span {
+  display: none;
+}
+
+/* Liked songs: "Add all to a playlist" is an icon beside Download all. */
+.phone .head-actions .add-all {
+  order: 3;
+  width: 44px;
+  height: 48px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  justify-content: center;
+}
+
+.phone .head-actions:has(.add-all) .dl-all {
+  order: 4;
+  width: 44px;
+  margin-left: -8px;
+}
+
+/* With both icons, Shuffle shows as its icon so the row stays on one line. */
+@media (max-width: 440px) {
+  .phone .head-actions:has(.add-all) .btn.outline {
+    width: 52px;
+    padding: 0;
+    gap: 0;
+    font-size: 0;
+    justify-content: center;
+  }
+}
+
+.phone .add-all .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.phone .dl-all .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.phone .icon-btn {
+  width: 48px;
+  height: 48px;
+  color: var(--text);
+}
+
+.phone .icon-btn.small,
+.phone .icon-btn.tiny {
+  width: 44px;
+  height: 44px;
+}
+
+.phone .icon-btn.toggle.on {
+  color: var(--red);
+  background: none;
+}
+
+.phone .text-btn {
+  height: 44px;
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+/* ---- bottom tabs ---------------------------------------------------------------- */
+
+/* The tabs lie over the page and fade into it, so a little of what scrolls
+   underneath shows through, as in Spotify. */
+.phone .tabbar {
+  grid-area: 1 / 1;
+  align-self: end;
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: var(--bottom-bar);
+  padding-bottom: var(--nav-bottom);
+  background: linear-gradient(to bottom, oklch(0.11 0.012 265 / 0.62), oklch(0.11 0.012 265 / 0.96) 40%, var(--sunken) 70%);
+}
+
+/* The fade starts a little above the tabs. */
+.phone .tabbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, oklch(0.11 0.012 265 / 0.62));
+  pointer-events: none;
+}
+
+/* The mini-player floats just above the tabs. */
+.phone .player:not(.expanded) {
+  margin-bottom: calc(var(--bottom-bar) + 10px);
+}
+
+.phone .tabbar .tab {
+  position: relative;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: oklch(0.72 0.014 265);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: color 0.2s var(--ease);
+}
+
+.phone .tabbar .tab:hover {
+  background: none;
+  color: oklch(0.72 0.014 265);
+}
+
+.phone .tabbar .tab .icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  transition: transform 0.12s var(--ease);
+}
+
+.phone .tabbar .tab .icon path {
+  stroke-width: 1.9;
+  fill: transparent;
+  transition:
+    stroke-width 0.2s var(--ease),
+    fill 0.2s var(--ease);
+}
+
+/* Pressed, the icon gives a little; let go, it springs back past its size. */
+.phone .tabbar .tab:active .icon {
+  transform: scale(0.84);
+}
+
+.phone .tabbar .tab.tapped .icon {
+  animation: tab-pop 0.42s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes tab-pop {
+  from {
+    transform: scale(0.84);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* Home and Profile fill in when they're the current tab. */
+.phone .tabbar .tab.active:is([data-view="home"], [data-view="profile"]) .icon path {
+  fill: currentColor;
+}
+
+.phone .tabbar .tab.active {
+  background: none;
+  color: oklch(0.97 0.006 265);
+  font-weight: 500;
+}
+
+.phone .tabbar .tab.active .icon {
+  background: none;
+  color: inherit;
+}
+
+.phone .tabbar .tab.active .icon path {
+  stroke-width: 2.3;
+}
+
+/* A short red line glows over the current tab. */
+.phone .tabbar .tab.active::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 22px;
+  height: 3px;
+  margin-left: -11px;
+  border-radius: 2px;
+  background: var(--red);
+  box-shadow: 0 0 10px var(--red);
+  animation: tab-line 0.3s var(--ease);
+}
+
+@keyframes tab-line {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+/* ---- the floating tab bar (a setting): tabs and song in one see-through bubble ---- */
+
+.phone.float-nav {
+  /* The bubble's tab row plus the gap under it. */
+  --tabbar-h: 70px;
+  --glass: oklch(0.2 0.02 270 / 0.62);
+}
+
+.phone.float-nav .tabbar {
+  height: 58px;
+  margin: 0 12px calc(12px + var(--nav-bottom));
+  padding-bottom: 0;
+  border-radius: 22px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow:
+    var(--shadow),
+    inset 0 0 0 1px oklch(1 0 0 / 0.07);
+}
+
+.phone.float-nav .tabbar::after {
+  display: none;
+}
+
+/* Icons only in the bubble; the red line sits under the icon. */
+.phone.float-nav .tabbar .tab {
+  font-size: 0;
+  gap: 0;
+}
+
+.phone.float-nav .tabbar .tab .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.phone.float-nav .tabbar .tab.active::before {
+  top: auto;
+  bottom: 8px;
+  width: 16px;
+  margin-left: -8px;
+}
+
+/* With a song playing, the song is the bubble's top half. */
+.phone.float-nav .player:not(.expanded) {
+  margin-bottom: calc(var(--bottom-bar) - 1px);
+  border-radius: 22px 22px 0 0;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.07);
+}
+
+.phone.float-nav .app:has(.player:not(.idle)) .tabbar {
+  border-radius: 0 0 22px 22px;
+  clip-path: inset(0 -40px -40px -40px);
+}
+
+/* Lists scroll under the bubble, so leave less room than for solid tabs. */
+.phone.float-nav .app:has(.player:not(.idle)) .main {
+  padding-bottom: calc(var(--bottom-bar) - 1px + var(--mini-h) + var(--page-end));
+}
+
+/* ---- search ------------------------------------------------------------------- */
+
+.phone .brand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  font-weight: 800;
+  font-stretch: 75%;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.phone .view-head .brand-row + h1 {
+  margin-top: 6px;
+}
+
+.phone .search-box {
+  flex: none;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  height: 56px;
+  margin-top: 18px;
+  padding: 0 6px 0 20px;
+  gap: 12px;
+  border-radius: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+
+.phone .search-box:focus-within {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--red);
+}
+
+.phone .search-box input {
+  height: 100%;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.phone .search-box input::placeholder {
+  color: var(--text-2);
+}
+
+.phone .search-box input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.phone .search-clear {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--text-2);
+}
+
+.phone .search-box.compact {
+  height: 48px;
+  margin: 18px 0 8px;
+  padding: 0 18px;
+  gap: 10px;
+  border-radius: 24px;
+}
+
+.phone .search-box.compact input {
+  font-size: 16px;
+}
+
+.phone .recs-head {
+  align-items: flex-start;
+  margin: 26px 0 12px;
+  padding: 0;
+}
+
+.phone .recs-head h2 {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.phone .recs-head p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .recs-head p:empty {
+  display: none;
+}
+
+.phone #recs-refresh {
+  width: 44px;
+  height: 44px;
+  margin: -6px -10px 0 0;
+  color: var(--text-2);
+}
+
+.phone #recs-refresh:disabled {
+  color: var(--text-3);
+}
+
+/* Refreshing: the ring stays where the pull let go of it. */
+.phone .pull-spinner {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 22px auto -8px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: 0 8px 20px oklch(0.06 0.02 280 / 0.6);
+}
+
+.phone .spinner {
+  display: block;
+}
+
+.phone .pull-spinner .spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Pull to refresh: the ring comes down with the finger. */
+.phone .pull {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: 0 8px 20px oklch(0.06 0.02 280 / 0.6);
+  translate: -50% -52px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.phone .pull.on {
+  opacity: 1;
+}
+
+.phone .no-results {
+  padding-top: 72px;
+}
+
+.phone .no-results h2 {
+  margin-top: 10px;
+  font-size: 40px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.phone .no-results p {
+  margin: 14px 0 0;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.phone .try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .try .chip-label {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+/* Loading: placeholder rows shaped like songs. */
+.phone .loading-rows {
+  gap: 0;
+  margin: 0 -24px;
+}
+
+.phone .sk-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 68px;
+  padding: 0 24px;
+}
+
+.phone .sk-art {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.phone .sk-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phone .sk-lines b,
+.phone .sk-lines i {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.phone .sk-lines i {
+  height: 10px;
+  background: var(--surface);
+}
+
+/* ---- empty states ---------------------------------------------------------------- */
+
+.phone .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 72px 8px 24px;
+  color: var(--text-2);
+}
+
+/* The icon sits in a rounded tile. */
+.phone .empty > .icon {
+  box-sizing: content-box;
+  width: 40px;
+  height: 40px;
+  padding: 27px;
+  border-radius: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+
+.phone .empty h2 {
+  margin-top: 24px;
+  font-size: 36px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.phone .empty p {
+  max-width: 300px;
+  margin-top: 12px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.phone .banner {
+  margin: 18px 0 0;
+  padding: 16px 18px;
+  flex-wrap: wrap;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Offline: amber, never red. */
+.phone .offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  margin: 8px 0 0;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: oklch(0.8 0.14 75 / 0.12);
+  border: 1px solid oklch(0.8 0.14 75 / 0.35);
+  color: var(--alert);
+}
+
+.phone .offline-banner span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.phone .offline-banner b {
+  font-size: 16px;
+  color: oklch(0.88 0.1 80);
+}
+
+.phone .offline-banner small {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: oklch(0.8 0.06 80);
+}
+
+/* ---- song rows ------------------------------------------------------------------ */
+
+.phone .track-list,
+.phone #recs-list {
+  margin: 0 -24px;
+}
+
+/* Search holds rows only once it has results; its other states keep the gutter. */
+.phone #results:not(:has(> .track)) {
+  margin: 0;
+}
+
+.phone .track {
+  grid-template-columns: 48px minmax(0, 1fr) auto 40px 44px;
+  gap: 14px;
+  height: 68px;
+  padding: 0 12px 0 24px;
+  border-radius: 0;
+  contain-intrinsic-size: auto 68px;
+}
+
+.phone .track-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.phone .track-album,
+.phone .track-dur,
+.phone .track-play {
+  display: none;
+}
+
+.phone .track-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.phone .track-artist {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+.phone .track-artist > :is(.link, .artists) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .dl {
+  flex: none;
+  margin-right: 6px;
+  color: var(--text-2);
+  font-family: var(--mono);
+}
+
+.phone .dl .icon path {
+  stroke-width: 2.6;
+}
+
+.phone .np-bars {
+  grid-column: 3;
+}
+
+.phone .track [data-act="more"] {
+  grid-column: 5;
+  opacity: 1;
+  color: var(--text-2);
+}
+
+/* A heart on every song: liking is one tap, without the menu. */
+.phone .track .like {
+  grid-column: 4;
+  width: 40px;
+  height: 44px;
+  margin-right: -12px;
+  opacity: 1;
+  color: var(--text-2);
+}
+
+.phone .track .like.on {
+  color: var(--red);
+}
+
+.phone .track:hover,
+.phone .q-item:hover,
+.phone .card:hover,
+.phone .dl-row:hover {
+  background: none;
+}
+
+/* The playing song: a red title and three still bars. */
+.phone .track.playing {
+  background: none;
+}
+
+.phone .track.playing .track-title,
+.phone .q-item.current .q-title {
+  color: var(--red-text);
+}
+
+.phone .track.playing .np-bars,
+.phone .q-item.current .np-bars {
+  display: flex;
+}
+
+.phone .np-bars {
+  align-items: flex-end;
+  gap: 3.5px;
+  height: 17px;
+}
+
+.phone .np-bars i {
+  width: 3px;
+  height: 11px;
+  border-radius: 1.5px;
+  background: oklch(0.66 0.21 25);
+}
+
+.phone .np-bars i:nth-child(2) {
+  height: 15px;
+}
+
+.phone .np-bars i:nth-child(3) {
+  height: 8px;
+}
+
+/* Offline, songs that aren't downloaded can't play. */
+.phone .track.unavailable .track-title,
+.phone .track.unavailable .track-artist {
+  color: var(--text-3);
+}
+
+.phone .track.unavailable .track-art {
+  opacity: 0.35;
+}
+
+/* ---- swipes: right queues a song, left does what the list allows ------------- */
+
+.phone .track,
+.phone .now {
+  touch-action: pan-y;
+}
+
+.phone .track.swiping {
+  position: relative;
+  overflow: hidden;
+}
+
+.phone .track.swiping > :not(.swipe-hint),
+.phone .now > * {
+  translate: var(--swipe-x, 0) 0;
+}
+
+/* What letting go does, uncovered by the row. Neutral, never red. */
+.phone .swipe-hint {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--swipe-w);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.phone .swipe-hint.right {
+  left: 0;
+}
+
+.phone .swipe-hint.left {
+  right: 0;
+}
+
+.phone .swipe-hint svg {
+  flex: none;
+  scale: 0.8;
+  transition: scale 0.15s;
+}
+
+.phone .track.armed .swipe-hint svg {
+  scale: 1;
+}
+
+.phone .track.swiping > .track-art,
+.phone .track.swiping > .track-main {
+  box-shadow: none;
+}
+
+.phone .track.settling > *,
+.phone .now.settling > * {
+  transition: translate 0.18s ease-out, width 0.18s ease-out;
+}
+
+/* The bar's song slides out under its own edge, not over the buttons. */
+.phone .player:not(.expanded) .now {
+  overflow: hidden;
+}
+
+/* ---- downloads ------------------------------------------------------------------ */
+
+.phone .dl-pending {
+  margin: 0 -24px;
+}
+
+.phone .dl-pending h2 {
+  margin: 24px 24px 2px;
+}
+
+.phone .dl-pending + .section-label {
+  margin-top: 14px;
+}
+
+.phone .dl-row {
+  gap: 14px;
+  height: 68px;
+  padding: 0 12px 0 24px;
+  border-radius: 0;
+}
+
+.phone .dl-row .q-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.phone .dl-progress {
+  display: none;
+}
+
+.phone .dl-row .q-text {
+  flex: 1;
+}
+
+.phone .dl-row .q-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.phone .dl-row .q-artist {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .dl-row .dl-status {
+  width: auto;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .dl-row .icon-btn {
+  color: var(--text-2);
+}
+
+/* ---- album, artist and playlist pages -------------------------------------------- */
+
+.phone .page-bar {
+  position: static;
+  height: 60px;
+  padding-top: 12px;
+}
+
+.phone .page-bar .icon-btn {
+  top: 0;
+  left: -12px;
+  background: none;
+  backdrop-filter: none;
+}
+
+.phone .hero {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-rows: 1fr auto auto;
+  align-items: end;
+  column-gap: 18px;
+  row-gap: 8px;
+  padding: 10px 0 16px;
+}
+
+/* No back button (a playlist opened from a tab): leave room for ⋮. */
+.phone .main > .hero:first-child,
+.phone .main > .offline-banner:first-child + .hero {
+  margin-top: 60px;
+}
+
+.phone .hero-text {
+  display: contents;
+}
+
+.phone .hero-art {
+  grid-row: 1 / 4;
+  grid-column: 1;
+  width: 150px;
+  height: 150px;
+  border-radius: 16px;
+  box-shadow: 0 18px 40px oklch(0.06 0.02 280 / 0.7);
+}
+
+.phone .hero-art.round {
+  border-radius: 50%;
+}
+
+.phone .hero-label,
+.phone .hero-meta {
+  grid-column: 2;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--page-art, var(--art)) 25%, var(--text));
+}
+
+.phone .hero-label {
+  grid-row: 2;
+}
+
+.phone .hero-meta {
+  grid-row: 3;
+  padding-bottom: 4px;
+}
+
+.phone .hero h1 {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  margin: 12px 0 0;
+  font-size: 80px;
+  line-height: 0.86;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
+.phone .hero h1[data-len="mid"] {
+  font-size: 60px;
+}
+
+.phone .hero h1[data-len="long"] {
+  font-size: 44px;
+  line-height: 0.92;
+}
+
+.phone .hero-actions {
+  grid-column: 1 / -1;
+  grid-row: 5;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.phone .hero-actions .btn {
+  margin: 0;
+}
+
+.phone [data-hero="shuffle"] {
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: 52px;
+  gap: 10px;
+  padding: 0 20px;
+  border-radius: 26px;
+  border: 1.5px solid var(--outline);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+/* Narrow phones: Shuffle shows as its icon, so Play, Shuffle and the icons
+   still fit on one line. */
+@media (max-width: 400px) {
+  .phone [data-hero="shuffle"] {
+    width: 52px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .phone .hero-actions [data-hero="shuffle"] .lbl {
+    display: none;
+  }
+
+  .phone .hero-actions,
+  .phone .head-actions {
+    gap: 8px;
+  }
+}
+
+/* Shuffle on: lit, like the player's own switch. */
+.phone .shuffle-toggle.on {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.phone [data-hero="shuffle"] .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.phone [data-hero="shuffle"] .lbl {
+  display: inline;
+}
+
+.phone [data-hero="playlist"] {
+  margin-left: auto;
+}
+
+/* A shared playlist's Save, and an artist's Follow, take the place of "Add all
+   to a playlist". */
+.phone .main:is([data-view="shared"], [data-view="ytlist"], [data-view="mix"], [data-view="artist"]) [data-hero="playlist"] {
+  display: none;
+}
+
+.phone .main:is([data-view="shared"], [data-view="ytlist"], [data-view="mix"], [data-view="artist"]) [data-hero="download"] {
+  margin-left: auto;
+}
+
+.phone [data-hero="follow"].on {
+  color: var(--red);
+}
+
+/* The playlist's ⋮ and an album's or artist's Share sit in the top bar, across from Back. */
+.phone :is([data-hero="more"], [data-hero="share"]) {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.phone .hero.loading {
+  display: flex;
+}
+
+.phone .hero.loading .hero-art {
+  grid-row: auto;
+}
+
+.phone .page-section h2 {
+  margin: 28px 0 12px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.phone .cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+
+.phone .card {
+  padding: 0;
+  background: none;
+}
+
+.phone .card-art {
+  border-radius: 16px;
+}
+
+.phone .card.round .card-art {
+  border-radius: 50%;
+}
+
+.phone .card-title {
+  margin-top: 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.phone .card-sub {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* A mix's name on its cover, as Spotify's Daily Mixes have. */
+.phone .card-art:has(.card-badge) {
+  position: relative;
+}
+
+.phone .card-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26px 12px 10px;
+  background: linear-gradient(transparent, oklch(0.08 0.02 265 / 0.85));
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  font-stretch: 85%;
+  line-height: 1;
+}
+
+/* One row of cards that scrolls sideways, edge to edge. */
+.phone .cards.row {
+  display: flex;
+  gap: 14px;
+  margin: 0 -24px;
+  padding: 0 24px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 24px;
+  overscroll-behavior-x: contain;
+}
+
+.phone .cards.row .card {
+  flex: 0 0 136px;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+/* Search: Songs, Artists, Albums. */
+.phone .search-tabs {
+  margin: 16px 0 8px;
+}
+
+/* Search: an artist or album; also the artist a search names, above the songs. */
+.phone .page-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+}
+
+.phone .page-row-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+.phone .page-row-art.round {
+  border-radius: 50%;
+}
+
+.phone .page-row-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .page-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.phone .page-row-text b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+}
+
+.phone .page-row-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .page-row > .icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.phone .page-row:active {
+  opacity: 0.7;
+}
+
+/* Liked songs and playlists: find in the list, and sort it. */
+.phone .list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 4px;
+}
+
+.phone .find-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+
+.phone .find-box:focus-within {
+  box-shadow: 0 0 0 2px var(--red);
+}
+
+.phone .find-box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.phone .find-box input::placeholder {
+  color: var(--text-2);
+}
+
+.phone #sort-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+
+.phone #sort-btn.on {
+  color: var(--red);
+}
+
+/* A touch leaves the hover on the name last tapped: don't light it up. */
+.phone .link:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---- Home and Library ----------------------------------------------------------- */
+
+/* Phones list playlists on Library and Home instead. */
+.phone .sidebar {
+  display: none;
+}
+
+.phone .head-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.phone .head-row .icon-btn {
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Home's shortcuts: two columns of small tiles, cover on the left. */
+.phone .shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.phone .shortcuts[hidden] {
+  display: none;
+}
+
+.phone .shortcut {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 56px;
+  padding: 0 10px 0 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.phone .shortcut:active {
+  background: var(--surface-3);
+}
+
+.phone .sc-art {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.phone .sc-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .sc-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+/* Liked songs: a red heart glowing on a dark tile, like its page's header. */
+.phone .liked-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  color: var(--red);
+}
+
+.phone .liked-art .icon {
+  filter: drop-shadow(0 0 10px oklch(0.63 0.22 25 / 0.6));
+}
+
+.phone #home-recs .recs-head {
+  margin-top: 30px;
+}
+
+/* Library: a grid of covers, ending with a tile that makes a playlist. */
+.phone .pl-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
+  margin-top: 22px;
+}
+
+.phone .pl-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.phone .pl-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  margin-bottom: 6px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+.phone .pl-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .pl-art .icon {
+  width: 36px;
+  height: 36px;
+}
+
+.phone .pl-tile:active .pl-art {
+  scale: 0.97;
+}
+
+/* A followed artist. */
+.phone .pl-tile.artist .pl-art {
+  border-radius: 50%;
+}
+
+.phone .pl-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .pl-sub {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+/* A pinned playlist. */
+.phone .pl-sub .icon {
+  margin: 0 4px -2px 0;
+  color: var(--red);
+}
+
+.phone .pl-new .pl-art {
+  background: none;
+  border: 1.5px dashed oklch(0.42 0.014 265);
+}
+
+.phone .pl-new .pl-name {
+  color: var(--text-2);
+}
+
+/* ---- Search: recent songs and genres -------------------------------------------- */
+
+.phone .browse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin: 26px 0 8px;
+}
+
+.phone .browse-head h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.phone .browse-head .text-btn {
+  margin-right: -8px;
+  color: var(--text-2);
+}
+
+.phone .track [data-act="remove"] {
+  grid-column: 5;
+  color: var(--text-2);
+}
+
+.phone .genres {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.phone .genre {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  height: 96px;
+  padding: 14px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--genre), color-mix(in oklab, var(--genre) 55%, black));
+  color: oklch(0.98 0.005 265);
+  font-size: 18px;
+  font-weight: 800;
+  font-stretch: 75%;
+  line-height: 1.1;
+  text-align: left;
+  overflow-wrap: anywhere;
+  transition: scale 0.16s ease-out;
+}
+
+.phone .genre:active {
+  scale: 0.97;
+  transition-duration: 0.09s;
+}
+
+/* A genre's page: its color in place of a cover. */
+.phone .main[data-view="category"] .hero-art {
+  background: linear-gradient(135deg, var(--page-art), color-mix(in oklab, var(--page-art) 55%, black));
+}
+
+.phone .main[data-view="category"] .hero-art .art-fallback {
+  color: oklch(0.98 0.005 265 / 0.85);
+}
+
+/* ---- settings ------------------------------------------------------------------ */
+
+.phone .main[data-view="settings"] .section-label {
+  margin: 26px 0 10px;
+}
+
+.phone .box {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.phone .engine-box {
+  gap: 14px;
+  padding: 18px;
+}
+
+.phone .engine-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.phone .engine-line b {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.phone .mono {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.phone .pill {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 7px;
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.phone .pill i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.phone .pill.ok {
+  background: oklch(0.76 0.15 155 / 0.12);
+  color: oklch(0.82 0.13 155);
+}
+
+.phone .pill.ok i {
+  background: var(--ok);
+  box-shadow: 0 0 8px oklch(0.76 0.15 155 / 0.7);
+}
+
+.phone .pill.warn {
+  background: oklch(0.8 0.14 75 / 0.12);
+  color: var(--alert);
+}
+
+.phone .btn.outline {
+  justify-content: center;
+  height: 48px;
+  border-radius: 24px;
+  font-size: 14px;
+}
+
+.phone .setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 72px;
+  padding: 14px 14px 14px 18px;
+  text-align: left;
+}
+
+.phone .setting + .setting {
+  position: relative;
+}
+
+/* A divider that starts under the text, past the icon. */
+.phone .setting + .setting::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 58px;
+  right: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.phone .setting span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.phone .setting b {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.phone .setting small,
+.phone .setting > .icon:last-child {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Crossfade: the slider runs under the text, lined up with it. */
+.phone .range-setting {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding-top: 16px;
+  padding-bottom: 12px;
+}
+
+.phone .range-setting .slider {
+  flex: 1 0 calc(100% - 40px);
+  height: 32px;
+  margin-left: 40px;
+}
+
+.phone .range-setting .slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--red) var(--p), var(--line) var(--p));
+}
+
+.phone .range-setting .slider::-webkit-slider-thumb {
+  opacity: 1;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  background: var(--text);
+}
+
+/* An on/off switch that lights red when on. */
+.phone .switch {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--line);
+  transition: background 0.2s;
+}
+
+.phone .switch::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-2);
+  transition: translate 0.2s var(--ease), background 0.2s;
+}
+
+.phone [aria-checked="true"] .switch {
+  background: var(--red);
+}
+
+.phone [aria-checked="true"] .switch::after {
+  translate: 20px 0;
+  background: var(--text);
+}
+
+/* Download quality: one choice, ticked in red. */
+.phone .tick {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  color: var(--red);
+  visibility: hidden;
+}
+
+.phone .choice[aria-pressed="true"] .tick {
+  visibility: visible;
+}
+
+.phone .setting-note {
+  margin: 10px 4px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* ---- the mini-player: a floating card above the tabs --------------------------- */
+
+.phone .player {
+  grid-area: 1 / 1;
+  align-self: end;
+  z-index: 5;
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  height: var(--mini-h);
+  margin: 0 12px 10px;
+  padding: 0 6px 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 18px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.phone .player.idle {
+  display: none;
+}
+
+.phone .now-art {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.phone .now {
+  gap: 12px;
+}
+
+.phone .now-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.phone .now-artist {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .player:not(.expanded) .now-text .link {
+  pointer-events: none;
+}
+
+.phone .player:not(.expanded) .now-dl,
+.phone .player:not(.expanded) .extras,
+.phone .player:not(.expanded) .time,
+.phone .player:not(.expanded) #btn-shuffle,
+.phone .player:not(.expanded) #btn-prev,
+.phone .player:not(.expanded) #btn-repeat {
+  display: none;
+}
+
+/* A long title must not squeeze the heart: the bar clips whatever pokes out. */
+.phone .player:not(.expanded) #now-like {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin: 0 -6px 0 auto;
+  color: var(--text-2);
+}
+
+.phone .player:not(.expanded) #now-like.on {
+  color: var(--red);
+}
+
+.phone .player:not(.expanded) .buttons {
+  gap: 0;
+}
+
+.phone .player:not(.expanded) .icon-btn,
+.phone .player:not(.expanded) .play-btn {
+  width: 48px;
+  height: 48px;
+  background: none;
+  color: var(--text);
+}
+
+.phone .player:not(.expanded) .play-btn .icon,
+.phone .player:not(.expanded) .icon-btn .icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* The seek bar becomes a thin red line along the bottom edge. */
+.phone .player:not(.expanded) .seek {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  pointer-events: none;
+}
+
+.phone .player:not(.expanded) .slider {
+  height: 3px;
+}
+
+.phone .player:not(.expanded) .slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 0;
+  background: linear-gradient(to right, var(--red) var(--p), var(--line) var(--p));
+}
+
+.phone .player:not(.expanded) .slider::-webkit-slider-thumb {
+  display: none;
+}
+
+/* ---- Now Playing: the player opened full screen -------------------------------- */
+
+.phone .player.expanded {
+  position: fixed;
+  inset: 0;
+  /* The mini-player sits at the end of its row; open, it fills the screen.
+     Newer web views honor align-self on fixed boxes, which would otherwise
+     shrink it to its content at the bottom of the screen. */
+  align-self: stretch;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  height: auto;
+  margin: 0;
+  padding: 72px 24px var(--nav-bottom);
+  border-radius: 0;
+  box-shadow: none;
+  /* A cover swiped aside leaves the screen instead of widening the page. */
+  overflow: hidden;
+  /* Sideways swipes skip, downward drags close; both are handled in main.ts. */
+  touch-action: none;
+  background:
+    radial-gradient(120% 60% at 50% 18%, color-mix(in oklab, var(--art) 36%, var(--bg)) 0%, var(--bg) 72%),
+    var(--bg);
+  animation: np-up 0.32s var(--ease);
+}
+
+.phone .player.expanded.settling {
+  transition: translate 0.24s var(--ease);
+}
+
+@keyframes np-up {
+  from {
+    translate: 0 40%;
+    opacity: 0;
+  }
+}
+
+.phone .player.expanded .np-close,
+.phone .player.expanded .np-more {
+  display: grid;
+  position: absolute;
+  top: 12px;
+}
+
+.phone .player.expanded .np-close {
+  left: 12px;
+}
+
+.phone .player.expanded .np-more {
+  right: 12px;
+}
+
+.phone .player.expanded .np-close .icon,
+.phone .player.expanded .np-more .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.phone .player.expanded .np-from:not([hidden]) {
+  display: flex;
+  position: absolute;
+  top: 12px;
+  left: 72px;
+  right: 72px;
+  height: 48px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.phone .np-from span {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--art) 30%, var(--text));
+}
+
+.phone .np-from b {
+  max-width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .player.expanded .now {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "art art art" "text like dl";
+  align-items: start;
+  gap: 26px 2px;
+}
+
+.phone .player.expanded .now-art {
+  grid-area: art;
+  justify-self: center;
+  width: min(100%, 46vh);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 20px;
+  box-shadow: 0 28px 70px oklch(0.06 0.02 280 / 0.75);
+}
+
+.phone .player.expanded .now-text {
+  grid-area: text;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.phone .player.expanded #now-like {
+  grid-area: like;
+  width: 48px;
+  height: 48px;
+  margin-top: 6px;
+}
+
+.phone .player.expanded .now-dl {
+  grid-area: dl;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-top: 6px;
+  /* Its icon lines up with the cover's right edge. */
+  margin-right: -13px;
+}
+
+.phone .player.expanded .now-dl[hidden] {
+  display: none;
+}
+
+.phone .player.expanded #now-like.on {
+  color: oklch(0.66 0.21 25);
+}
+
+.phone .player.expanded .now-title {
+  max-width: 100%;
+  font-size: 60px;
+  line-height: 0.88;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.phone .player.expanded .now-title[data-len="mid"] {
+  font-size: 46px;
+}
+
+.phone .player.expanded .now-title[data-len="long"] {
+  font-size: 36px;
+  line-height: 0.92;
+}
+
+/* The artist on a light chip. */
+.phone .player.expanded .now-artist {
+  max-width: 100%;
+  margin: 0;
+  padding: 5px 9px 4px;
+  border-radius: 4px;
+  background: var(--label);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Several artists: a chip each, so each can be tapped for its own page. */
+.phone .player.expanded .now-artist.several {
+  padding: 0;
+  background: none;
+  overflow: visible;
+}
+
+.phone .player.expanded .now-artist .artists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.phone .player.expanded .now-artist .artists > * {
+  max-width: 100%;
+  padding: 5px 9px 4px;
+  border-radius: 4px;
+  background: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .player.expanded .now-artist .artists > .sep {
+  display: none;
+}
+
+.phone .player.expanded .transport {
+  flex-direction: column-reverse;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.phone .player.expanded .seek {
+  max-width: none;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.phone .player.expanded .seek .slider {
+  flex: 1 1 100%;
+  order: -1;
+  height: 24px;
+}
+
+.phone .player.expanded .slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--red) var(--p), var(--line) var(--p));
+}
+
+.phone .player.expanded .slider::-webkit-slider-thumb {
+  opacity: 1;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  background: oklch(0.97 0.006 265);
+}
+
+.phone .player.expanded .time {
+  width: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .player.expanded .buttons {
+  justify-content: space-between;
+  gap: 0;
+}
+
+/* On narrow phones the row is tight: the buttons stay round. */
+.phone .player.expanded .buttons > * {
+  flex: none;
+}
+
+.phone .player.expanded #btn-shuffle,
+.phone .player.expanded #btn-repeat {
+  width: 48px;
+  height: 48px;
+  color: var(--text-2);
+}
+
+/* The icons' edges line up with the cover and the seek bar. */
+.phone .player.expanded #btn-shuffle {
+  margin-left: -13px;
+}
+
+.phone .player.expanded #btn-repeat {
+  margin-right: -13px;
+}
+
+.phone .player.expanded #btn-shuffle.on,
+.phone .player.expanded #btn-repeat.on {
+  color: var(--red);
+}
+
+.phone .player.expanded #btn-prev,
+.phone .player.expanded #btn-next {
+  width: 56px;
+  height: 56px;
+}
+
+.phone .player.expanded #btn-prev .icon,
+.phone .player.expanded #btn-next .icon {
+  width: 30px;
+  height: 30px;
+}
+
+/* Play: the big red button. Its glow stays still. */
+.phone .play-btn {
+  background: var(--red);
+  color: var(--bg);
+}
+
+.phone .player.expanded .play-btn {
+  width: 84px;
+  height: 84px;
+  box-shadow: 0 0 32px oklch(0.63 0.22 25 / 0.5);
+}
+
+.phone .player.expanded .play-btn .icon {
+  width: 30px;
+  height: 30px;
+}
+
+.phone .play-btn.loading::after {
+  border-top-color: var(--text);
+}
+
+/* Queue, Lyrics and Equalizer along the bottom. */
+/* Spread evenly: Queue at the left edge, Equalizer at the right, and the
+   same space on both sides of Lyrics. */
+.phone .player.expanded .extras {
+  display: flex;
+  justify-content: space-between;
+  gap: 0;
+  margin: auto -24px 0;
+  padding: 0 24px;
+}
+
+.phone .player.expanded .extras .icon-btn {
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: 56px;
+  gap: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.phone .player.expanded .extras .icon-btn .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.phone .extras .lbl {
+  display: inline;
+}
+
+.phone #btn-queue {
+  order: 1;
+}
+
+.phone #btn-lyrics {
+  order: 2;
+}
+
+.phone #btn-eq {
+  order: 3;
+}
+
+/* Phones set the volume with their own buttons; the mini player is desktop only. */
+.phone #btn-mini,
+.phone #btn-mute,
+.phone #volume {
+  display: none;
+}
+
+/* ---- queue and lyrics: full-screen sheets ------------------------------------- */
+
+.phone .queue-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 16;
+  width: auto;
+  border: 0;
+  box-shadow: none;
+  background:
+    radial-gradient(120% 420px at 50% 0, color-mix(in oklab, var(--art) 22%, var(--bg)), var(--bg) 75%) no-repeat,
+    var(--bg);
+  animation: np-up 0.32s var(--ease);
+}
+
+.phone .queue-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "back . save clear" "title title title title";
+  align-items: center;
+  gap: 4px 0;
+  padding: 12px 12px 0 24px;
+  margin-left: -12px;
+  border: 0;
+}
+
+.phone .panel-back {
+  grid-area: back;
+  display: grid;
+}
+
+.phone .panel-back .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.phone .queue-head h2 {
+  grid-area: title;
+  padding-left: 12px;
+  font-size: 52px;
+  line-height: 0.9;
+}
+
+.phone #queue-clear {
+  grid-area: clear;
+}
+
+.phone #queue-save {
+  grid-area: save;
+}
+
+.phone .queue-list {
+  flex: 1;
+  padding: 0 0 24px;
+}
+
+.phone .q-label {
+  padding: 24px 24px 4px;
+}
+
+.phone .q-item {
+  gap: 14px;
+  height: 68px;
+  padding: 0 12px 0 24px;
+  border-radius: 0;
+}
+
+.phone .q-item.past {
+  display: none;
+}
+
+.phone .q-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.phone .q-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.phone .q-artist {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .q-item .icon-btn {
+  opacity: 1;
+  color: var(--text-3);
+}
+
+/* The playing song: a card at the top. */
+.phone .q-label:has(+ .q-item.current) {
+  padding-top: 20px;
+  padding-bottom: 10px;
+}
+
+.phone .q-item.current {
+  height: 84px;
+  margin: 0 24px;
+  padding: 0 16px 0 10px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.phone .q-item.current .q-art {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+
+.phone .q-item.current .q-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.phone .q-item.current .q-title {
+  max-width: 100%;
+  font-size: 20px;
+  font-weight: 800;
+  font-stretch: 85%;
+}
+
+.phone .q-item.current .q-artist {
+  max-width: 100%;
+  margin: 0;
+  padding: 3px 7px 2px;
+  border-radius: 4px;
+  background: var(--label);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.phone .q-item.current .q-handle {
+  display: none;
+}
+
+.phone .q-handle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-2);
+  /* The finger drags the song instead of scrolling the list. */
+  touch-action: none;
+}
+
+/* While a song is dragged, the others slide aside to make room. */
+.phone .sorting .q-item:not(.lifted) {
+  transition: translate 0.15s ease-out;
+}
+
+/* Songs slide across the section labels; those come back on the drop. */
+.phone .sorting .q-label {
+  visibility: hidden;
+}
+
+.phone .q-item.lifted {
+  position: relative;
+  z-index: 2;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: 0 18px 40px oklch(0.04 0.02 280 / 0.8), 0 0 0 1px oklch(0.34 0.016 265);
+  rotate: -1deg;
+  scale: 1.02;
+}
+
+/* The queue covers the player, so it has its own controls along the bottom. */
+.phone .q-transport {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: calc(104px + var(--nav-bottom));
+  padding-bottom: var(--nav-bottom);
+  background: var(--sunken);
+}
+
+.phone .q-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--line);
+}
+
+.phone .q-progress > div {
+  width: 0;
+  height: 100%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+.phone .q-time {
+  position: absolute;
+  left: 24px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Narrow phones: the time sits above the buttons instead of beside them. */
+@media (max-width: 380px) {
+  .phone .q-transport {
+    padding-top: 14px;
+  }
+
+  .phone .q-time {
+    top: 12px;
+  }
+}
+
+.phone .q-transport .play-btn {
+  width: 60px;
+  height: 60px;
+  box-shadow: 0 0 24px var(--red-glow);
+}
+
+.phone .lyrics-body {
+  padding: 8px 24px calc(40px + var(--nav-bottom));
+}
+
+.phone .lyric {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 800;
+  font-stretch: 85%;
+  line-height: 1.15;
+}
+
+.phone .lyrics-plain p {
+  font-size: 18px;
+}
+
+/* Picking lines for a lyrics card: the picked ones stand out. */
+.phone .lyrics-body.picking p {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.phone .lyrics-body.picking p.picked {
+  opacity: 1;
+  color: var(--text);
+  text-shadow: 0 0 22px var(--red-glow);
+}
+
+.phone .lyrics-pick:not([hidden]) {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: calc(24px + var(--nav-bottom));
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 32px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  animation: np-up 0.25s var(--ease);
+}
+
+.phone .lyrics-pick .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Now Playing with the sleep timer on: "☾ Stops in 23 min" over the list's name. */
+.phone .np-from.sleeping span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--red-text);
+}
+
+/* ---- sheets: track options, menus ---------------------------------------------- */
+
+.phone .menu {
+  left: 0 !important;
+  right: 0;
+  top: auto !important;
+  bottom: 0;
+  max-height: 80vh;
+  padding: 10px 0 calc(24px + var(--nav-bottom));
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  background: var(--surface);
+  /* Dims the page behind the sheet. */
+  box-shadow: 0 0 0 100vmax var(--scrim), 0 -20px 50px oklch(0.04 0.02 280 / 0.6);
+  animation: np-up 0.32s var(--ease);
+}
+
+/* The grabber. */
+.phone .menu::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 8px;
+  border-radius: 2px;
+  background: oklch(0.42 0.014 265);
+}
+
+.phone .sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 8px;
+  padding: 0 24px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.phone .sheet-art {
+  flex: none;
+  width: 60px;
+  height: 60px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--surface-3);
+}
+
+.phone .sheet-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .sheet-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.phone .sheet-title {
+  max-width: 100%;
+  font-size: 20px;
+  font-weight: 800;
+  font-stretch: 85%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .sheet-text .chip-label {
+  font-size: 11px;
+}
+
+.phone .menu button {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 56px;
+  padding: 6px 24px;
+  border-radius: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.phone .menu button > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.phone .menu button small {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.phone .menu button .icon {
+  flex: none;
+}
+
+.phone .menu button.on .icon {
+  color: var(--red);
+}
+
+.phone .menu button.on .icon path {
+  fill: currentColor;
+}
+
+.phone .menu hr {
+  margin: 4px 24px;
+  border-top-color: var(--line);
+}
+
+/* ---- snackbars, dialogs, equalizer --------------------------------------------- */
+
+.phone .toasts {
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--bottom-bar) + var(--mini-h) + 22px);
+  justify-items: stretch;
+  transform: none;
+}
+
+.phone .app:has(.player.idle) ~ .toasts {
+  bottom: calc(var(--bottom-bar) + 12px);
+}
+
+/* Full-screen Now Playing: up over the cover, clear of the controls. */
+.phone .app:has(.player.expanded) ~ .toasts {
+  top: 96px;
+  bottom: auto;
+}
+
+.phone .toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  max-width: none;
+  min-height: 52px;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px oklch(0.06 0.02 280 / 0.6);
+}
+
+.phone .toast:has(.toast-act) {
+  padding-right: 8px;
+}
+
+.phone .toast.error {
+  background: var(--surface-2);
+  color: var(--alert);
+}
+
+.phone .toast-act {
+  flex: none;
+  height: 44px;
+  padding: 0 12px;
+  pointer-events: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.phone .dialog-backdrop {
+  background: var(--scrim);
+}
+
+.phone .dialog {
+  padding: 24px;
+  border-radius: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.phone .dialog h2 {
+  font-size: 24px;
+  font-weight: 800;
+  font-stretch: 85%;
+}
+
+.phone .dialog p {
+  font-size: 15px;
+}
+
+.phone .dialog input {
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 26px;
+  background: var(--bg);
+  border-color: var(--line);
+  font-size: 16px;
+}
+
+.phone .dialog input:focus {
+  border-color: var(--line);
+  box-shadow: 0 0 0 2px var(--red);
+}
+
+.phone .dialog-actions .btn {
+  height: 48px;
+  font-size: 14px;
+}
+
+.phone .eq-panel {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 17;
+  padding: 20px 16px calc(24px + var(--nav-bottom));
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  background: var(--surface);
+  box-shadow: 0 0 0 100vmax var(--scrim);
+  animation: np-up 0.32s var(--ease);
+}
+
+.phone .eq-panel h2 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.phone .chip-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.phone .chip-btn.on {
+  background: var(--red);
+  color: var(--bg);
+}
+
+.phone .bands {
+  gap: 0;
+  justify-content: space-between;
+}
+
+.phone .band {
+  flex: 1;
+  width: auto;
+}
+
+.phone .band.preamp {
+  flex: none;
+  width: 40px;
+  margin-right: 4px;
+  padding-right: 4px;
+}
+
+.phone .db,
+.phone .hz {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* Android's "Remove animations": nothing moves, things just appear. */
+@media (prefers-reduced-motion: reduce) {
+  .phone *,
+  .phone *::before {
+    animation: none !important;
+    transition-duration: 0s !important;
+  }
+}
+
+.phone .q-item [data-remove] {
+  width: 36px;
+  margin-right: -6px;
+}
+
+/* Liked songs: a heart on a tile above the title, and the count below it. */
+.phone .head-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 18px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--red);
+}
+
+.phone .head-tile .icon {
+  filter: drop-shadow(0 0 10px oklch(0.63 0.22 25 / 0.6));
+}
+
+.phone .head-count {
+  display: block;
+  margin-top: 8px;
+}
+
+.phone .head-actions:not(:empty) {
+  margin-bottom: 18px;
+}
+
+/* Emoji in a big title stay small, as in "Temazos 😈🥵". */
+.phone .hero h1 .emoji {
+  font-size: 0.4em;
+  letter-spacing: 0;
+}
+
+.phone #recs-list > .loading-rows {
+  margin: 0;
+}
+
+.phone .page-bar + .view-head {
+  padding-top: 4px;
+}
+
+.phone .search-box:not(.compact) > .icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---- Profile: your listening --------------------------------------------------- */
+
+/* Week, month, year, all time; a red pill slides to the one picked. */
+.phone .period {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr));
+  margin: 22px 0 6px;
+  padding: 4px;
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.phone .period-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--n, 4));
+  border-radius: 20px;
+  background: var(--red);
+  box-shadow: 0 0 18px var(--red-glow);
+  transform: translateX(calc(var(--i, 0) * 100%));
+  transition: transform 0.38s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+
+.phone .period button {
+  position: relative;
+  height: 40px;
+  padding: 0;
+  border-radius: 20px;
+  background: none;
+  color: var(--text-2);
+  font-family: var(--mono);
+  /* Fits "All time" on narrow phones and with large text. */
+  font-size: min(12px, 2.9vw);
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  transition: color 0.25s var(--ease);
+}
+
+.phone .period button[aria-selected="true"] {
+  color: var(--bg);
+}
+
+.phone #stats {
+  transition: opacity 0.2s;
+}
+
+.phone #stats.dim {
+  opacity: 0.4;
+}
+
+/* Each part rises into place a beat after the one before. */
+.phone .rise {
+  animation: rise 0.5s var(--ease) both;
+  animation-delay: calc(var(--d, 0) * 45ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.phone .fade-in {
+  animation: fade-in 0.4s var(--ease) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.phone .stat-hero {
+  display: flex;
+  flex-direction: column;
+  margin-top: 18px;
+  padding: 22px 22px 20px;
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 140% at 0 0, oklch(0.63 0.22 25 / 0.32), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--line);
+}
+
+.phone .stat-label,
+.phone .stat-sub {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.phone .stat-label {
+  text-transform: uppercase;
+}
+
+.phone .stat-num {
+  margin: 6px 0 4px;
+  font-size: 64px;
+  font-weight: 800;
+  font-stretch: 75%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The top artist gets a big photo; the rest scroll along under it. */
+.phone .top-artist {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.phone .top-artist .ta-photo {
+  width: 112px;
+  height: 112px;
+  box-shadow: 0 0 40px var(--red-glow);
+}
+
+.phone .top-artist .ta-text b {
+  font-size: 26px;
+}
+
+.phone .top-artist .ta-rank {
+  left: 82px;
+  top: 82px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+}
+
+.phone .artist-row {
+  display: flex;
+  gap: 16px;
+  margin: 18px -24px 0;
+  padding: 0 24px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+
+.phone .artist-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: 84px;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: center;
+  scroll-snap-align: start;
+}
+
+.phone .artist-chip .ta-photo {
+  width: 76px;
+  height: 76px;
+}
+
+.phone .artist-chip .ta-rank {
+  left: 56px;
+  top: 54px;
+}
+
+.phone .artist-chip .ta-text {
+  align-items: center;
+  margin-top: 8px;
+}
+
+.phone .artist-chip .ta-text b {
+  font-size: 14px;
+}
+
+.phone .ta-photo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.phone .ta-photo img,
+.phone .al-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .ta-rank {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--red);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 0 0 3px var(--bg);
+}
+
+.phone .ta-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.phone .ta-text b {
+  overflow: hidden;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.phone .ta-text small {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Top songs: the rank, then a red bar for how often each played. */
+.phone .top-songs .track {
+  grid-template-columns: 22px 48px minmax(0, 1fr) auto 40px 44px;
+  height: 78px;
+  padding-left: 14px;
+  contain-intrinsic-size: auto 78px;
+}
+
+.phone .top-songs .np-bars {
+  grid-column: 4;
+}
+
+.phone .top-songs .like {
+  grid-column: 5;
+}
+
+.phone .top-songs [data-act="more"] {
+  grid-column: 6;
+}
+
+.phone .ts-rank {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.phone .top-songs .track:first-child .ts-rank {
+  color: var(--red-text);
+}
+
+.phone .ts-plays {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.phone .ts-plays i {
+  width: calc(var(--w, 1) * 72px);
+  min-width: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--red);
+  transform-origin: left;
+  animation: grow 0.7s var(--ease) both;
+  animation-delay: calc(var(--d, 0) * 45ms + 0.2s);
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.phone .top-albums {
+  display: flex;
+  gap: 14px;
+  margin: 14px -24px 0;
+  padding: 0 24px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+
+.phone .top-album {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 140px;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  scroll-snap-align: start;
+}
+
+.phone .al-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.phone .al-art .ta-rank {
+  left: 8px;
+  top: 8px;
+  box-shadow: none;
+}
+
+.phone .top-album b {
+  margin-top: 10px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phone .top-album small {
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phone .top-artist:active,
+.phone .artist-chip:active,
+.phone .top-album:active {
+  scale: 0.97;
+}
+
+/* Your music: songs imported from the phone, a note on a plain tile. */
+.phone .music-art,
+.phone .head-tile.music-tile {
+  color: var(--text);
+}
+
+.phone .music-art .icon,
+.phone .head-tile.music-tile .icon {
+  filter: none;
+}
+
+.phone #music-list .empty {
+  padding-top: 32px;
+}
+
+.phone .empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: -8px;
+  padding: 0 16px 24px;
+}
+
+/* Downloads in progress: a chip in the top-right corner, beside the page's
+   own button where it has one, and a panel of progress bars under it. */
+.phone .dl-chip {
+  position: fixed;
+  top: 22px;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: oklch(0.18 0.016 268 / 0.82);
+  backdrop-filter: blur(14px);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+
+.phone:has(#view .head-row .icon-btn) .dl-chip {
+  right: 72px;
+}
+
+.phone .dl-chip[hidden] {
+  display: none;
+}
+
+.phone .dl-chip:active {
+  scale: 0.95;
+}
+
+.phone .dl-chip-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+}
+
+.phone .dl-chip-ring .ring {
+  position: absolute;
+  inset: 0;
+}
+
+.phone .dl-chip-ring .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-2);
+}
+
+.phone .dl-chip b {
+  font-weight: 500;
+}
+
+.phone .dl-panel {
+  position: fixed;
+  top: 66px;
+  right: 12px;
+  z-index: 7;
+  width: min(340px, calc(100vw - 24px));
+  padding: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.phone .dl-panel[hidden] {
+  display: none;
+}
+
+.phone .dlp-head {
+  padding: 10px 18px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.phone .dlp-list {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.phone .dlp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 6px 8px 18px;
+}
+
+.phone .dlp-row .q-art {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+}
+
+.phone .dlp-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.phone .dlp-title {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phone .dlp-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.phone .dlp-line .dl-bar > div {
+  background: var(--red);
+}
+
+.phone .dlp-status {
+  flex-shrink: 0;
+  min-width: 52px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  text-align: right;
+}
+
+.phone .dlp-row .icon-btn {
+  flex-shrink: 0;
+  color: var(--text-2);
+}
+
+/* ---- podcasts ---------------------------------------------------------------- */
+
+.phone .pod-follow {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+
+.phone .pod-follow.on {
+  border-color: var(--line);
+  color: var(--text-2);
+}
+
+/* A show's description: three lines, all of it when tapped. */
+.phone .pod-about {
+  display: -webkit-box;
+  margin: 0 0 12px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.phone .pod-about.open {
+  -webkit-line-clamp: unset;
+}
+
+.phone .episode {
+  padding: 16px 0 14px;
+  border-bottom: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
+}
+
+.phone .episode:last-child {
+  border-bottom: 0;
+}
+
+.phone .ep-show {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+.phone .ep-show > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phone .ep-art {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.phone .ep-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .ep-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.phone .episode.playing .ep-title {
+  color: var(--red-text);
+}
+
+.phone .ep-desc {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.phone .ep-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.phone .ep-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.phone .episode.played .ep-title,
+.phone .episode.played .ep-desc {
+  opacity: 0.6;
+}
+
+.phone .ep-bar {
+  flex: none;
+  width: 48px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.phone .ep-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--red);
+}
+
+.phone .ep-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.phone .ep-actions .icon-btn {
+  color: var(--text-2);
+}
+
+.phone .ep-play {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+}
+
+.phone .ep-play:active {
+  transform: scale(0.94);
+}
+
+/* Episodes in Now Playing: skip back 15 s and ahead 30 s, and the speed. */
+.phone .player #btn-prev,
+.phone .player #btn-next {
+  position: relative;
+}
+
+.phone .skip-n {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-top: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.phone .player.expanded.episode #btn-shuffle,
+.phone .player.expanded.episode #btn-shuffle.on {
+  color: var(--text);
+}
+
+.phone .speed {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---- smart shuffle ------------------------------------------------------------- */
+
+.phone .q-spark {
+  display: inline-flex;
+  margin-right: 5px;
+  vertical-align: -2px;
+  color: var(--red-text);
+}
+
+.phone .q-spark .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* List pages' Shuffle buttons name what they do: "Shuffle" or "Smart". */
+.phone .btn.shuffle-toggle .lbl {
+  display: inline;
+}

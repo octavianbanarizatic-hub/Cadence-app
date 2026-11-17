@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cadence</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/phone.css" />
+  </head>
+  <body>
+    <div class="app">
+      <nav class="sidebar">
+        <div class="brand"><span class="brand-mark"></span>Cadence</div>
+        <button class="nav-item" data-view="search" data-icon="search">Search</button>
+        <button class="nav-item" data-view="library" data-icon="library">Library</button>
+        <button class="nav-item" data-view="liked" data-icon="heart">Liked songs</button>
+        <button class="nav-item" data-view="downloads" data-icon="download">Downloads</button>
+        <div class="playlists-head">
+          <span>Playlists</span>
+          <button class="icon-btn tiny" id="playlist-new" title="New playlist or import" data-icon="add"></button>
+        </div>
+        <div class="playlists" id="playlists"></div>
+        <div class="sidebar-foot">
+          <div class="engine" id="engine-status"></div>
+          <button class="icon-btn tiny" id="app-menu" title="Back up and restore" data-icon="settings"></button>
+        </div>
+      </nav>
+
+      <main class="main" id="view"></main>
+
+      <aside class="queue-panel" id="queue-panel" hidden>
+        <header class="queue-head">
+          <button class="icon-btn small panel-back" data-close-panel title="Back" data-icon="back"></button>
+          <h2>Up next</h2>
+          <button class="text-btn" id="queue-save" hidden>Save</button>
+          <button class="text-btn" id="queue-clear">Clear</button>
+          <button class="icon-btn small panel-close" data-close-panel title="Close" data-icon="close"></button>
+        </header>
+        <div class="queue-list" id="queue-list"></div>
+        <!-- Phones: the queue covers the player, so it brings its own controls. -->
+        <div class="q-transport">
+          <div class="q-progress"><div id="q-progress"></div></div>
+          <span class="q-time" id="q-time"></span>
+          <button class="icon-btn" id="q-prev" title="Previous" data-icon="prev"></button>
+          <button class="play-btn" id="q-play" title="Play"></button>
+          <button class="icon-btn" id="q-next" title="Next" data-icon="next"></button>
+        </div>
+      </aside>
+
+      <aside class="queue-panel lyrics-panel" id="lyrics-panel" hidden>
+        <header class="queue-head">
+          <button class="icon-btn small panel-back" data-close-panel title="Back" data-icon="back"></button>
+          <h2>Lyrics</h2>
+          <button class="icon-btn small panel-close" data-close-panel title="Close" data-icon="close"></button>
+        </header>
+        <div class="lyrics-body" id="lyrics-body"></div>
+        <!-- Phones: lines picked (hold one, then tap more) are shared as a card. -->
+        <div class="lyrics-pick" id="lyrics-pick" hidden>
+          <button class="btn outline" id="lyrics-pick-cancel">Cancel</button>
+          <button class="btn primary" id="lyrics-pick-share">Share</button>
+        </div>
+      </aside>
+
+      <footer class="player idle">
+        <button class="icon-btn np-close" id="np-close" title="Close" data-icon="chevronDown"></button>
+        <div class="np-from" id="np-from"><span>Playing from</span><b></b></div>
+        <button class="icon-btn np-more" id="np-more" title="More" data-icon="more"></button>
+        <div class="now">
+          <div class="now-art" id="now-art"></div>
+          <div class="now-text">
+            <div class="now-title" id="now-title">Nothing playing</div>
+            <div class="now-artist" id="now-artist"></div>
+          </div>
+          <button class="icon-btn small like" id="now-like" title="Like" hidden></button>
+          <button class="icon-btn small now-dl" id="now-dl" title="Download" hidden></button>
+        </div>
+        <div class="transport">
+          <div class="buttons">
+            <button class="icon-btn small toggle" id="btn-shuffle" title="Shuffle" data-icon="shuffle"></button>
+            <button class="icon-btn" id="btn-prev" title="Previous" data-icon="prev"></button>
+            <button class="play-btn" id="btn-play" title="Play"></button>
+            <button class="icon-btn" id="btn-next" title="Next" data-icon="next"></button>
+            <button class="icon-btn small toggle" id="btn-repeat" title="Repeat"></button>
+          </div>
+          <div class="seek">
+            <span class="time" id="time-cur">0:00</span>
+            <input type="range" class="slider" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+            <span class="time" id="time-dur">0:00</span>
+          </div>
+        </div>
+        <div class="extras">
+          <button class="icon-btn small toggle" id="btn-eq" title="Equalizer" data-icon="eq"><span class="lbl">Equalizer</span></button>
+          <button class="icon-btn small toggle" id="btn-lyrics" title="Lyrics (L)" data-icon="lyrics"><span class="lbl">Lyrics</span></button>
+          <button class="icon-btn small toggle" id="btn-queue" title="Queue" data-icon="queue"><span class="lbl">Queue</span></button>
+          <button class="icon-btn small" id="btn-mini" title="Mini player" data-icon="miniPlayer"></button>
+          <button class="icon-btn small" id="btn-mute" title="Mute"></button>
+          <input type="range" class="slider volume" id="volume" min="0" max="100" step="1" aria-label="Volume" />
+        </div>
+      </footer>
+
+      <!-- Phones only: the sidebar's places as tabs along the bottom. -->
+      <nav class="tabbar">
+        <button class="nav-item tab" data-view="home" data-icon="home">Home</button>
+        <button class="nav-item tab" data-view="search" data-icon="search">Search</button>
+        <button class="nav-item tab" data-view="library" data-icon="library">Library</button>
+        <button class="nav-item tab" data-view="profile" data-icon="person">Profile</button>
+      </nav>
+    </div>
+
+    <div class="eq-panel" id="eq-panel" hidden></div>
+    <div class="menu" id="menu" hidden></div>
+    <div class="dialog-backdrop" id="dialog" hidden><form class="dialog" id="dialog-form" method="dialog"></form></div>
+    <div class="toasts" id="toasts"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

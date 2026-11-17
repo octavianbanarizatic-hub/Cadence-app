@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-cadence-android"
+version = "0.1.0"
+description = "Cadence's Android-only native parts: yt-dlp with its own Python"
+edition = "2021"
+links = "tauri-plugin-cadence-android"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

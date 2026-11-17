@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mark in one color, for Android's themed icons. One color can't paint
+     gaps, so they are cut out: each clip path is the whole canvas with a hole
+     (drawn the other way round) where the planet, the ring's near half or the
+     moon needs room. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="18"
+        android:translateY="18">
+        <group>
+            <clip-path android:pathData="M-20,-20H120V120H-20zM61.01,51.7a9,9 0,1 0,18 0a9,9 0,1 0,-18 0z" />
+            <group>
+                <clip-path android:pathData="M-20,-20H120V120H-20zM25,50a25,25 0,1 0,50 0a25,25 0,1 0,-50 0z" />
+                <path
+                    android:pathData="M18.05,61.63A34,10 -20,0 1,46.58 40.6A34,10 -20,0 1,81.95 38.37"
+                    android:strokeColor="#FFFFFFFF"
+                    android:strokeLineCap="round"
+                    android:strokeWidth="5" />
+            </group>
+            <group>
+                <clip-path android:pathData="M-20,-20H120V120H-20zM13.82,63.17A38.5,14.5 -20,1 0,86.18 36.83L77.72,39.91A29.5,5.5 -20,1 1,22.28 60.09z" />
+                <path
+                    android:fillColor="#FFFFFFFF"
+                    android:fillType="evenOdd"
+                    android:pathData="M30.5,50a19.5,19.5 0,1 0,39 0a19.5,19.5 0,1 0,-39 0zM30.73,53L69.27,53A19.5,19.5 0,0 1,68.71 55.5L31.29,55.5A19.5,19.5 0,0 1,30.73 53zM32.7,59L67.3,59A19.5,19.5 0,0 1,65.37 62L34.63,62A19.5,19.5 0,0 1,32.7 59zM36.96,64.5L63.04,64.5A19.5,19.5 0,0 1,54.39 69L45.61,69A19.5,19.5 0,0 1,36.96 64.5z" />
+            </group>
+            <path
+                android:pathData="M81.95,38.37A34,10 -20,0 1,53.42 59.4A34,10 -20,0 1,18.05 61.63"
+                android:strokeColor="#FFFFFFFF"
+                android:strokeLineCap="round"
+                android:strokeWidth="5" />
+        </group>
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M64.01,51.7a6,6 0,1 0,12 0a6,6 0,1 0,-12 0z" />
+    </group>
+</vector>

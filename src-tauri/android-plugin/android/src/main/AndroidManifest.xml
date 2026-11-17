@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Keep playing with the screen off (PlaybackService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- A short buzz when a swiped song reaches the queue mark. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- App updates: Android still asks before installing one. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Automatic downloads wait for Wi-Fi. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application>
+        <service
+            android:name="dev.cadence.android.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- The home-screen widget. -->
+        <receiver
+            android:name="dev.cadence.android.CadenceWidget"
+            android:exported="true"
+            android:label="Cadence">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cadence_widget_info" />
+        </receiver>
+
+        <!-- Android Auto: the library, and the songs to play from it. -->
+        <service
+            android:name="dev.cadence.android.CadenceBrowser"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/cadence_automotive" />
+    </application>
+</manifest>

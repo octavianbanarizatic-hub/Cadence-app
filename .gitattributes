@@ -1,0 +1,2 @@
+# gradlew is a shell script: keep Unix line endings, which Android builds write anyway.
+src-tauri/gen/android/gradlew text eol=lf

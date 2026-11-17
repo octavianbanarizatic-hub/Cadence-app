@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page background (bg in phone.css). -->
+    <color name="cadence_bg">#FF05070D</color>
+</resources>

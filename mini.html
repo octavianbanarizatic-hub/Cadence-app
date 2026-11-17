@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cadence mini player</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/mini.css" />
+  </head>
+  <body>
+    <div class="mini" data-tauri-drag-region>
+      <div class="now-art mini-art" id="art" data-tauri-drag-region></div>
+      <div class="mini-text" data-tauri-drag-region>
+        <div class="mini-title" id="title" data-tauri-drag-region>Nothing playing</div>
+        <div class="mini-artist" id="artist" data-tauri-drag-region></div>
+      </div>
+      <div class="mini-buttons">
+        <button class="icon-btn small like" id="like" title="Like" hidden></button>
+        <button class="icon-btn small" id="prev" title="Previous" data-icon="prev"></button>
+        <button class="play-btn" id="play" title="Play"></button>
+        <button class="icon-btn small" id="next" title="Next" data-icon="next"></button>
+      </div>
+      <button class="icon-btn tiny mini-expand" id="expand" title="Back to the full window (Esc)" data-icon="expand"></button>
+      <span class="mini-time" id="time"></span>
+      <div class="mini-seek" id="seek"><div class="mini-fill" id="fill"></div></div>
+    </div>
+    <script type="module" src="/src/mini.ts"></script>
+  </body>
+</html>

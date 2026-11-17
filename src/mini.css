@@ -1,0 +1,118 @@
+/* The mini player window; tokens and buttons come from styles.css. */
+
+.mini {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 0 44px 4px 12px;
+  /* A hint of the album color, fading into the normal surface. */
+  background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 20%, var(--surface)) 0%, var(--surface) 65%);
+  transition: background 0.4s;
+  overflow: hidden;
+}
+
+.mini-art {
+  width: 68px;
+  height: 68px;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Let a drag on the cover move the window like the rest of the background. */
+.mini-art > * {
+  pointer-events: none;
+}
+
+.mini-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.mini-title,
+.mini-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-title {
+  font-weight: 650;
+}
+
+.mini-artist {
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.mini-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mini-buttons .play-btn {
+  width: 40px;
+  height: 40px;
+  margin: 0 2px;
+}
+
+.mini-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--text-3);
+}
+
+.mini-time {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.mini:hover .mini-time {
+  opacity: 1;
+}
+
+/* A thin progress bar along the bottom edge; taller when pointed at. */
+.mini-seek {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+}
+
+.mini-seek::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--surface-3);
+  transition: height 0.15s;
+}
+
+.mini-fill {
+  position: relative;
+  height: 3px;
+  background: var(--accent);
+  transition: height 0.15s;
+}
+
+.mini-seek:hover::before,
+.mini-seek:hover .mini-fill,
+.mini-seek.dragging::before,
+.mini-seek.dragging .mini-fill {
+  height: 5px;
+}
