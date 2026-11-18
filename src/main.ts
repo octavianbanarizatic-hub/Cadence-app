@@ -691,6 +691,12 @@ function openSettings() {
   show("settings", null);
 }
 
+/** Phones: the downloaded songs open from Settings, and Back returns there. */
+function openDownloads() {
+  history.push({ view, page, scroll: $("#view").scrollTop });
+  show("downloads", null);
+}
+
 function openTarget(target: string) {
   const p = pageFor(target);
   if (p) openPage(p);
@@ -2102,8 +2108,12 @@ function onDownload(item: DownloadItem) {
   if (isEpisode(item.track)) refreshEpisodeRows();
   updateDownloadLiked();
   updateDlChip();
-  // Progress alone doesn't change the sidebar's line.
-  if (item.state !== was) renderSidebar();
+  // Progress alone doesn't change the sidebar's line, or Settings'.
+  if (item.state !== was) {
+    renderSidebar();
+    const note = document.querySelector("#open-downloads small");
+    if (note) note.textContent = downloadsNote();
+  }
   if (id === player.current?.id) updateNowExtras();
   if (view !== "downloads") return;
   // Progress only moves a bar; anything else changes what is listed.
@@ -2135,12 +2145,12 @@ function renderDownloads() {
   const scroll = $("#view").scrollTop;
   const ring = `<svg class="dl-ring" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--line)" stroke-width="2.4"/><circle class="arc" cx="8" cy="8" r="6" fill="none" stroke="var(--red)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="0 37.7" transform="rotate(-90 8 8)"/></svg>`;
   const sub = tracks.length ? `<p class="view-sub">${count(tracks.length, "song")} · ${formatBytes(bytes)} · plays without an internet connection</p>` : "";
-  // Phones put the summary between the title and the buttons.
-  $("#view").innerHTML = `
+  // Phones put the summary between the title and the buttons, and open the page from Settings.
+  $("#view").innerHTML = `${phone ? backBar() : ""}
     <header class="view-head">
       <h1>Downloads</h1>
       ${phone ? sub : ""}
-      <div class="head-actions">${tracks.length ? `<button class="btn primary" id="play-downloads">${icon("play", 18)}Play all</button>${shuffleButton("shuffle-downloads")}` : ""}</div>
+      <div class="head-actions">${tracks.length ? `<button class="btn primary" id="play-downloads">${icon("play", 18)}${phone ? "Play" : "Play all"}</button>${shuffleButton("shuffle-downloads")}` : ""}</div>
     </header>
     ${phone ? "" : sub}
     ${
@@ -2182,7 +2192,15 @@ function renderDownloads() {
     $("#play-downloads").onclick = () => player.playList(tracks, 0, from);
     bindShuffle("shuffle-downloads", tracks, from);
   }
+  bindBack();
   $("#view").scrollTop = scroll;
+}
+
+/** Settings' line under "Downloaded songs": how many, and the space they take. */
+function downloadsNote(): string {
+  const saved = [...downloads.values()].filter((d) => d.state === "done");
+  if (!saved.length) return "Nothing downloaded yet";
+  return `${count(saved.length, "song")} · ${formatBytes(saved.reduce((n, d) => n + d.done, 0))}`;
 }
 
 /** Hides a download at once but deletes it only once Undo has had its chance. */
@@ -2655,6 +2673,7 @@ function renderSettings() {
     </div>`
         : ""
     }
+    ${phone ? `<h2 class="section-label">Downloads</h2><div class="box">${row("open-downloads", "downloadDone", "Downloaded songs", downloadsNote())}</div>` : ""}
     <h2 class="section-label">Download quality</h2>
     <div class="box" id="dl-quality">
       ${QUALITIES.map(
@@ -2742,6 +2761,7 @@ function renderSettings() {
     $("#add-folder").onclick = () => void addFolder().then((added) => added && openMusic());
     $("#open-music").onclick = openMusic;
   }
+  if (phone) $("#open-downloads").onclick = openDownloads;
   $("#backup").onclick = () => void backUp();
   $("#restore").onclick = () => void restoreBackup();
   const update = $<HTMLButtonElement>("#ytdlp-update");
