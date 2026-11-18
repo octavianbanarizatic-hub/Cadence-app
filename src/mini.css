@@ -1,4 +1,27 @@
-/* The mini player window; tokens and buttons come from styles.css. */
+/* The mini player window; buttons come from styles.css. Its colors are the
+   main window's "Afterhours" ones (phone.css): near-black, red for play and
+   progress, and a glow in the cover's color. */
+
+:root {
+  --bg: oklch(0.13 0.014 265);
+  --surface: oklch(0.18 0.016 268);
+  --surface-2: oklch(0.21 0.02 270);
+  --surface-3: oklch(0.25 0.02 268);
+  --border: oklch(0.3 0.014 265);
+  --text: oklch(0.95 0.008 265);
+  --text-2: oklch(0.74 0.014 265);
+  --text-3: oklch(0.52 0.012 265);
+  --red: oklch(0.63 0.22 25);
+  --accent: var(--red);
+  --on-accent: var(--bg);
+  --art: oklch(0.6 0.16 290);
+  color-scheme: dark;
+}
+
+.mini .play-btn {
+  background: var(--red);
+  color: var(--bg);
+}
 
 .mini {
   position: relative;
@@ -7,8 +30,8 @@
   gap: 12px;
   height: 100vh;
   padding: 0 44px 4px 12px;
-  /* A hint of the album color, fading into the normal surface. */
-  background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 20%, var(--surface)) 0%, var(--surface) 65%);
+  /* A hint of the cover's color, fading into the background. */
+  background: linear-gradient(100deg, color-mix(in oklab, var(--art) 24%, var(--bg)) 0%, var(--bg) 65%);
   transition: background 0.4s;
   overflow: hidden;
 }

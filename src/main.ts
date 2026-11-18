@@ -1,5 +1,5 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { documentDir, join } from "@tauri-apps/api/path";
+import { documentDir, join, pictureDir } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -34,8 +34,10 @@ import { EQ_BANDS, EQ_PRESETS, MAX_CROSSFADE, Player, shuffled } from "./player"
 import { settings } from "./settings";
 
 /**
- * Home and Profile are phone tabs, Settings opens from Profile and Your music
- * (songs imported from the phone) from Library; the desktop has none of them.
+ * Home, Search, Library and Profile are the phone's tabs and the desktop's
+ * sidebar; Settings opens from Profile's gear (and the sidebar's on the
+ * desktop). Your music is the songs imported from the phone, or on the desktop
+ * the music folders.
  */
 type View = "home" | "search" | "library" | "liked" | "music" | "downloads" | "profile" | "settings" | "page";
 
@@ -46,25 +48,27 @@ type Page =
   | { kind: "playlist"; id: number }
   | { kind: "localAlbum"; album: string; artist: string }
   | { kind: "localArtist"; artist: string }
-  /** Phones: a genre from Search's Browse all. */
+  /** A genre from Search's Browse all. */
   | { kind: "category"; name: string }
-  /** Phones: a playlist someone shared, by its songs' YouTube ids. */
+  /** A playlist someone shared, by its songs' YouTube ids. */
   | { kind: "shared"; name: string; ids: string[] }
-  /** Phones: a playlist on YouTube, opened from a link shared to Cadence. */
+  /** A playlist on YouTube, opened from a link shared to Cadence (or pasted into Search). */
   | { kind: "ytlist"; id: string }
-  /** Phones: one of today's mixes on Home. */
+  /** One of today's mixes on Home. */
   | { kind: "mix"; index: number }
-  /** Phones: a podcast, by Apple's id. */
+  /** A podcast, by Apple's id. */
   | { kind: "podcast"; id: string };
 
 const player = new Player();
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
-/** Phones get their own layout (phone.css): bottom tabs and a full-screen player. */
+/** Phones get their own layout (phone.css): bottom tabs and a full-screen player.
+ *  The desktop's (desktop.css) has a sidebar and a Now Playing panel. */
 const phone = /Android/i.test(navigator.userAgent);
 document.documentElement.classList.toggle("phone", phone);
+document.documentElement.classList.toggle("desktop", !phone);
 
 /** Where the app starts and Back ends up. */
-const startView: Exclude<View, "page"> = phone ? "home" : "search";
+const startView: Exclude<View, "page"> = "home";
 // Phones always open on Home; the desktop returns to where it was.
 let view: View = phone ? startView : settings.get<View>("view", startView);
 if (view === "page") view = startView;
@@ -75,7 +79,7 @@ let playlists: PlaylistInfo[] = [];
 const liked = new Map<string, Track>();
 /** Downloads by track id: running, waiting and finished (newest first). */
 const downloads = new Map<string, DownloadItem>();
-/** Phones: which results the search shows. */
+/** Which results the search shows. */
 type SearchTab = "songs" | "artists" | "albums" | "podcasts";
 const search = { query: "", results: [] as Track[], loading: false, error: "", token: 0, pages: null as SearchPages | null, shows: null as Show[] | null, tab: "songs" as SearchTab };
 let engine: YtDlpStatus | null = null;
@@ -321,8 +325,8 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
     else if (act === "like") {
       const unliking = liked.has(track.id);
       void toggleLike(track).then(() => {
-        // Phones: a heart tapped by mistake can be put back.
-        if (phone && unliking && !liked.has(track.id)) toast("Removed from liked songs", "info", { label: "Undo", run: () => void toggleLike(track) });
+        // A heart clicked by mistake can be put back.
+        if (unliking && !liked.has(track.id)) toast("Removed from liked songs", "info", { label: "Undo", run: () => void toggleLike(track) });
       });
     }
     else if (act === "more") openMenu(e as MouseEvent, track, opts.menu?.(i));
@@ -453,6 +457,7 @@ async function toggleLike(track: Track) {
     b.innerHTML = icon(on ? "heartFilled" : "heart", 18);
   });
   updateNowLike();
+  renderSidebar();
   if (view === "liked") void renderLiked();
 }
 
@@ -497,7 +502,7 @@ function openMenu(e: MouseEvent, track: Track, extra: MenuItem[] = []) {
       run: () => void (dl ? removeDownload(track) : downloadTracks([track])),
     });
   }
-  if (phone && track.id.startsWith("yt:")) {
+  if (track.id.startsWith("yt:")) {
     const id = track.id.slice(3);
     items.push({ label: "Start radio", icon: "radio", run: () => void startRadio([track], `${track.title} radio`, track) });
     items.push({ label: "Share", icon: "share", run: () => void share({ kind: "song", id, title: track.title, artist: track.artist }) });
@@ -534,7 +539,12 @@ function showMenu(items: MenuItem[], x = menuAt.x, y = menuAt.y, head?: Track) {
     top +
     items
       .map((it, i) => {
-        const line = phone && it.icon ? `${icon(it.icon, 24)}<span>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>` : esc(it.label);
+        // The desktop's menus are smaller, with the icons but not the second lines.
+        const line = !it.icon
+          ? esc(it.label)
+          : phone
+            ? `${icon(it.icon, 24)}<span>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>`
+            : `${icon(it.icon, 18)}<span>${esc(it.label)}</span>`;
         return `${it.divider ? `<hr />` : ""}<button data-i="${i}" class="${it.on ? "on" : ""}">${line}</button>`;
       })
       .join("");
@@ -648,7 +658,7 @@ function show(v: View, p: Page | null, scroll = 0) {
   el.dataset.view = p ? p.kind : v;
   if (v === "home") renderHome();
   else if (v === "search") renderSearch();
-  else if (v === "library") void renderLibrary();
+  else if (v === "library") renderCollection();
   else if (v === "liked") void renderLiked();
   else if (v === "music") void renderMusic();
   else if (v === "downloads") renderDownloads();
@@ -663,7 +673,7 @@ function openPage(p: Page) {
   show("page", p);
 }
 
-/** Phones: Liked songs opens from Library or Home, and Back returns there. */
+/** Liked songs opens from Library or Home, and Back returns there. */
 function openLiked() {
   history.push({ view, page, scroll: $("#view").scrollTop });
   show("liked", null);
@@ -675,7 +685,7 @@ function openMusic() {
   show("music", null);
 }
 
-/** Phones: Settings opens from the gear on Profile. */
+/** Settings opens from the gear on Profile (or the sidebar's on the desktop). */
 function openSettings() {
   history.push({ view, page, scroll: $("#view").scrollTop });
   show("settings", null);
@@ -697,12 +707,16 @@ function markNav() {
   // music belong to Library and Settings to Profile.
   const root = history[0]?.view ?? view;
   const tab = root === "liked" || root === "music" ? "library" : root === "settings" ? "profile" : root;
+  // The desktop's sidebar lights what is open: a view, or a playlist, artist or podcast.
+  const open = page && "id" in page ? `${page.kind}:${page.id}` : "";
   document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
     const on = b.classList.contains("tab")
       ? tab === b.dataset.view
       : b.dataset.view
         ? view === b.dataset.view
-        : page?.kind === "playlist" && page.id === Number(b.dataset.pl);
+        : b.dataset.pl
+          ? open === `playlist:${b.dataset.pl}`
+          : !!open && b.dataset.go === open;
     b.classList.toggle("active", on);
   });
 }
@@ -971,13 +985,35 @@ function bindPullToRefresh() {
   });
 }
 
+/** What both layouts share: Autoplay, playlist menus, offline lists, the sleep timer and queue tools. */
+function bindCommon() {
+  player.autoplay = settings.get("autoplay", true);
+  bindPlaylistHold();
+  // Songs that can't play without internet dim, and lists say so.
+  const reconnect = () => {
+    if (view === "liked") void renderLiked();
+    else if (page?.kind === "playlist") void renderPage(page);
+    else if (view === "search") renderResults();
+    else if (view === "home") renderRecs();
+  };
+  window.addEventListener("online", reconnect);
+  window.addEventListener("offline", reconnect);
+  player.addEventListener("time", checkSleep);
+  player.addEventListener("state", checkSleep);
+  bindQueueTools();
+  $("#np-more").onclick = (e) => player.current && openMenu(e, player.current, [sleepItem()]);
+  $("#now-dl").onclick = () => {
+    const t = player.current;
+    if (t) void (downloads.has(t.id) ? removeDownload(t) : downloadTracks([t]));
+  };
+  document.querySelectorAll<HTMLElement>("[data-close-panel]").forEach((b) => (b.onclick = () => setSidePanel(null)));
+}
+
 function bindPhone() {
   if (!phone) return;
   (window as unknown as { __cadenceBack: () => boolean }).__cadenceBack = back;
-  player.autoplay = settings.get("autoplay", true);
   setFloatNav(floatNav());
   bindTabAnimations();
-  bindPlaylistHold();
   // The page draws behind the navigation bar; its bottom parts pad by its height.
   const navBar = (px: number) => document.documentElement.style.setProperty("--nav-bottom", `${px}px`);
   (window as unknown as { __cadenceInsets: (px: number) => void }).__cadenceInsets = navBar;
@@ -999,54 +1035,42 @@ function bindPhone() {
   bindPullToRefresh();
   $(".brand").innerHTML = `${mark(28)}<span>cadence</span>`;
   $("#queue-panel h2").textContent = "Queue";
-  // Songs that can't play without internet dim, and lists say so.
-  const reconnect = () => {
-    if (view === "liked") void renderLiked();
-    else if (page?.kind === "playlist") void renderPage(page);
-    else if (view === "search") renderResults();
-    else if (view === "home") renderRecs();
-  };
-  window.addEventListener("online", reconnect);
-  window.addEventListener("offline", reconnect);
   $("#np-close").onclick = () => setNowPlayingOpen(false);
-  player.addEventListener("time", checkSleep);
-  player.addEventListener("state", checkSleep);
-  bindQueueTools();
-  $("#np-more").onclick = (e) => player.current && openMenu(e, player.current, [sleepItem()]);
-  $("#now-dl").onclick = () => {
-    const t = player.current;
-    if (t) void (downloads.has(t.id) ? removeDownload(t) : downloadTracks([t]));
-  };
   $("#q-play").onclick = () => player.toggle();
   $("#q-prev").onclick = () => player.prev();
   $("#q-next").onclick = () => player.next();
-  document.querySelectorAll<HTMLElement>("[data-close-panel]").forEach((b) => (b.onclick = () => setSidePanel(null)));
   bindMediaControls();
 }
 
 /**
- * Phones: holding a playlist in Library or on Home offers to play it, copy
+ * Holding a playlist in Library or on Home (right-clicking it on the desktop,
+ * in the sidebar too) offers to play it, copy
  * its songs to another playlist or to Liked songs, rename or delete it.
  * Holding Liked songs offers to play it or copy it to a playlist.
  */
 function bindPlaylistHold() {
-  $("#view").addEventListener("contextmenu", (e) => {
-    const artist = (e.target as HTMLElement).closest<HTMLElement>('.pl-tile[data-go^="artist:"]');
+  const hold = (e: MouseEvent) => {
+    const artist = (e.target as HTMLElement).closest<HTMLElement>('.pl-tile[data-go^="artist:"], .nav-item.pl[data-go^="artist:"]');
     const followed = following.find((a) => `artist:${a.id}` === artist?.dataset.go);
     if (followed) {
       e.preventDefault();
       navigator.vibrate?.(12);
-      return showMenu([
-        { label: "Open", icon: "person", run: () => openTarget(`artist:${followed.id}`) },
-        { label: "Unfollow", icon: "close", run: () => setFollow(followed, false) },
-      ]);
+      return showMenu(
+        [
+          { label: "Open", icon: "person", run: () => openTarget(`artist:${followed.id}`) },
+          { label: "Unfollow", icon: "close", run: () => setFollow(followed, false) },
+        ],
+        e.clientX,
+        e.clientY,
+      );
     }
     const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '.pl-tile[data-go^="playlist:"], .shortcut[data-go^="playlist:"], .pl-tile[data-liked], .shortcut[data-liked]',
+      '.pl-tile[data-go^="playlist:"], .shortcut[data-go^="playlist:"], .pl-tile[data-liked], .shortcut[data-liked], .nav-item.pl[data-pl], .nav-item.pl[data-view="liked"]',
     );
     if (!target) return;
-    const pl = playlists.find((p) => `playlist:${p.id}` === target.dataset.go);
-    if (!pl && !target.hasAttribute("data-liked")) return;
+    const go = target.dataset.go ?? (target.dataset.pl ? `playlist:${target.dataset.pl}` : "");
+    const pl = playlists.find((p) => `playlist:${p.id}` === go);
+    if (!pl && !target.matches('[data-liked], [data-view="liked"]')) return;
     e.preventDefault();
     navigator.vibrate?.(12);
     const name = pl?.name ?? "Liked songs";
@@ -1054,7 +1078,8 @@ function bindPlaylistHold() {
     const withSongs = (fn: (tracks: Track[]) => void) => () =>
       void songs().then((tracks) => (tracks.length ? fn(tracks) : toast(`${name} is empty`)), (err) => toast(String(err), "error"));
     const play = (shuffle: boolean) => withSongs((tracks) => (shuffle ? shuffleList(tracks, name) : playFromTop(tracks, name)));
-    showMenu([
+    showMenu(
+      [
       { label: "Play", icon: "play", run: play(false) },
       { label: "Shuffle", icon: "shuffle", run: play(true) },
       { label: "Start radio", icon: "radio", run: withSongs((tracks) => void startRadio(tracks, `${name} radio`)) },
@@ -1075,8 +1100,13 @@ function bindPlaylistHold() {
             { label: "Delete playlist", icon: "trash", run: () => void deletePlaylist(pl.id, pl.name) } satisfies MenuItem,
           ]
         : []),
-    ]);
-  });
+      ],
+      e.clientX,
+      e.clientY,
+    );
+  };
+  $("#view").addEventListener("contextmenu", hold);
+  $("#playlists").addEventListener("contextmenu", hold);
 }
 
 /** Spotify-style tabs: a tapped icon gives a little and springs back, and the page fades in. */
@@ -1165,7 +1195,7 @@ async function playSearch(query: string) {
   if (first) player.playList([first], 0, query.trim() ? `“${query.trim()}”` : "Liked songs");
 }
 
-// ---- Home and Library (phones) -----------------------------------------------------
+// ---- Home and Library -----------------------------------------------------------
 
 function renderHome() {
   $("#view").innerHTML = `
@@ -1206,7 +1236,7 @@ function renderShortcuts() {
   el.hidden = !items.length;
 }
 
-/** Phones: Liked songs and every playlist, as a grid of covers. */
+/** Liked songs and every playlist, as a grid of covers. */
 function renderCollection() {
   $("#view").innerHTML = `
     <header class="view-head">
@@ -1226,7 +1256,9 @@ function renderCollection() {
   renderPlaylistGrid();
 }
 
+/** Library's grid, and the desktop's sidebar, which lists the same. */
 function renderPlaylistGrid() {
+  renderSidebar();
   const el = document.getElementById("pl-grid");
   if (!el) return;
   const tile = (attrs: string, art: string, name: string, sub: string, kind = "") =>
@@ -1252,7 +1284,7 @@ function renderSearch() {
     <header class="view-head">
       <h1>Search</h1>
       <label class="search-box">${icon("search", 20)}
-        <input id="q" type="search" placeholder="${phone ? "Songs, artists, podcasts" : "Songs, artists, albums"}" spellcheck="false" autocomplete="off" />
+        <input id="q" type="search" placeholder="Songs, artists, podcasts" spellcheck="false" autocomplete="off" />
         <button class="search-clear" id="q-clear" type="button" title="Clear search" hidden>${icon("close", 20)}</button>
       </label>
     </header>
@@ -1287,6 +1319,11 @@ function renderSearch() {
 async function doSearch(q: string) {
   q = q.trim();
   if (q === search.query && search.results.length) return;
+  // A Cadence, YouTube or YouTube Music link opens what it links to.
+  if (/^https?:\/\//i.test(q)) {
+    const item = await api.openLink(q).catch(() => null);
+    if (item) return void openShared(item);
+  }
   search.query = q;
   search.error = "";
   const token = ++search.token;
@@ -1298,21 +1335,19 @@ async function doSearch(q: string) {
   }
   search.loading = true;
   renderResults();
-  // Phones also find artists and albums, shown under their own tabs.
-  if (phone) {
-    const none: SearchPages = { artists: [], albums: [] };
-    void api.searchPages(q).then(
-      (pages) => token === search.token && ((search.pages = pages), renderResults()),
-      () => token === search.token && ((search.pages = none), renderResults()),
-    );
-    void api.podcastSearch(q).then(
-      (shows) => token === search.token && ((search.shows = shows), renderResults()),
-      () => token === search.token && ((search.shows = []), renderResults()),
-    );
-  }
-  // Phones, as Spotify: your own songs that match come first (liked,
-  // downloaded, in playlists, played a lot, imported from the phone), offline too.
-  const mine = phone ? yourMatches(q) : Promise.resolve([]);
+  // Artists, albums and podcasts are found too, shown under their own tabs.
+  const none: SearchPages = { artists: [], albums: [] };
+  void api.searchPages(q).then(
+    (pages) => token === search.token && ((search.pages = pages), renderResults()),
+    () => token === search.token && ((search.pages = none), renderResults()),
+  );
+  void api.podcastSearch(q).then(
+    (shows) => token === search.token && ((search.shows = shows), renderResults()),
+    () => token === search.token && ((search.shows = []), renderResults()),
+  );
+  // As in Spotify, your own songs that match come first (liked, downloaded,
+  // in playlists, played a lot, your own files), offline too.
+  const mine = yourMatches(q);
   try {
     const results = await api.search(q);
     const own = await mine;
@@ -1338,11 +1373,11 @@ const SEARCH_TABS: { id: SearchTab; name: string }[] = [
   { id: "podcasts", name: "Podcasts" },
 ];
 
-/** Phones: Songs, Artists and Albums, with the red pill on the one shown. */
+/** Songs, Artists, Albums and Podcasts, with the red pill on the one shown. */
 function renderSearchTabs() {
   const el = document.getElementById("search-tabs");
   if (!el) return;
-  if (!phone || !search.query) return void (el.innerHTML = "");
+  if (!search.query) return void (el.innerHTML = "");
   if (!el.firstElementChild) {
     el.innerHTML = `<div class="period search-tabs" role="tablist" style="--n: ${SEARCH_TABS.length}">
       <i class="period-pill"></i>
@@ -1367,7 +1402,7 @@ function plain(s: string): string {
 }
 
 /** Your songs that match a search: liked, downloaded, in playlists, played,
- *  then songs imported from the phone. */
+ *  then your own files (imported on a phone, in music folders on the desktop). */
 async function yourMatches(q: string): Promise<Track[]> {
   const [saved, files] = await Promise.all([
     api.yourSongs(q, 6).catch(() => [] as Track[]),
@@ -1384,12 +1419,12 @@ function named(name: string): boolean {
   return n.length >= 3 && (q.includes(n) || (q.length >= 3 && n.startsWith(q)));
 }
 
-/** Phones, Songs tab: an artist you follow or the artist the search names,
+/** Songs tab: an artist you follow or the artist the search names,
  *  as Spotify's top result, then your playlists whose name matches. */
 function renderTopArtist() {
   const el = document.getElementById("search-top");
   if (!el) return;
-  if (!phone || !search.query || search.tab !== "songs") return void (el.innerHTML = "");
+  if (!search.query || search.tab !== "songs") return void (el.innerHTML = "");
   const yours = following.find((a) => named(a.name));
   const top = search.pages?.artists[0];
   const artist = yours ?? (top && plain(search.query).includes(plain(top.name)) && plain(top.name).length >= 3 ? top : null);
@@ -1414,7 +1449,7 @@ function pageRows(rows: { target: string; art: string | null; title: string; sub
     .join("");
 }
 
-/** Phones, Artists, Albums and Podcasts tabs. */
+/** Artists, Albums and Podcasts tabs. */
 function renderPageResults(el: HTMLElement) {
   // The song list's paging must not add songs here.
   loadMoreRows = null;
@@ -1441,31 +1476,30 @@ function renderResults() {
   if (!el) return;
   renderSearchTabs();
   renderTopArtist();
-  if (phone && search.query && search.tab !== "songs") {
+  if (search.query && search.tab !== "songs") {
     renderPageResults(el);
   } else if (search.loading && !search.results.length) {
     el.innerHTML = loadingRows(8);
   } else if (search.error) {
     el.innerHTML = emptyState("search", "Search failed", esc(search.error));
   } else if (!search.query) {
-    // Phones keep recommendations on Home.
-    if (phone) renderBrowse(el);
-    else renderRecommendations(el);
+    // Recommendations are on Home.
+    renderBrowse(el);
   } else if (!search.results.length) {
-    el.innerHTML = phone ? noResults(search.query) : emptyState("search", "No results", `Nothing matched “${esc(search.query)}”.`);
+    el.innerHTML = noResults(search.query);
     el.querySelector<HTMLElement>("[data-try]")?.addEventListener("click", (e) => {
       const q = (e.currentTarget as HTMLElement).dataset.try!;
       $<HTMLInputElement>("#q").value = q;
       void doSearch(q);
     });
   } else {
-    // Phones play the song tapped, then songs like it, as in Spotify.
-    mountTrackList(el, search.results, { from: `“${search.query}”`, onPlay: phone ? rememberSearch : undefined, single: phone });
+    // The song picked plays, then songs like it, as in Spotify.
+    mountTrackList(el, search.results, { from: `“${search.query}”`, onPlay: rememberSearch, single: true });
   }
   el.classList.toggle("dim", search.loading && search.results.length > 0 && search.tab === "songs");
 }
 
-// ---- search history and genres (phones) ------------------------------------------
+// ---- search history and genres --------------------------------------------------
 
 /** Songs played from search results, newest first. */
 let recentSearches = settings.get<Track[]>("recentSearches", []);
@@ -1503,7 +1537,7 @@ function genre(name: string) {
   return GENRES.find((g) => g.name === name) ?? GENRES[0];
 }
 
-/** Phones, with nothing typed: recent searches, then genres to browse. */
+/** With nothing typed: recent searches, then genres to browse. */
 function renderBrowse(el: HTMLElement) {
   const recent = recentSearches;
   el.innerHTML = `${
@@ -1533,9 +1567,8 @@ function renderBrowse(el: HTMLElement) {
   });
 }
 
-/** Placeholder rows while a list loads; on phones they're shaped like songs. */
+/** Placeholder rows while a list loads, shaped like songs. */
 function loadingRows(n: number): string {
-  if (!phone) return `<div class="loading-rows">${"<div class='skeleton'></div>".repeat(n)}</div>`;
   const widths = [58, 40, 66, 48, 54, 44, 62, 50];
   return `<div class="loading-rows">${widths
     .slice(0, n)
@@ -1551,7 +1584,7 @@ function spinner(size: number): string {
   return `<svg class="spinner" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="var(--line)" stroke-width="2.6"/><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="var(--red)" stroke-width="2.6" stroke-linecap="round"/></svg>`;
 }
 
-/** Phones: a search that found nothing, with a shorter search to try. */
+/** A search that found nothing, with a shorter search to try. */
 function noResults(query: string): string {
   const words = query.split(/\s+/);
   const shorter = words.length > 2 ? words.slice(0, 2).join(" ") : "";
@@ -1565,7 +1598,7 @@ function noResults(query: string): string {
 
 // ---- recommendations ---------------------------------------------------------------
 
-/** Songs for Home (phones) or the empty search page, picked once per session (or on refresh). */
+/** Songs for Home, picked once per session (or on refresh). */
 const recs = { tracks: [] as Track[], basis: [] as string[], state: "idle" as "idle" | "loading" | "ready" | "error", error: "" };
 
 /** Songs like a few of the user's own (liked, in playlists, playing), that they don't have yet. */
@@ -1599,9 +1632,8 @@ async function loadRecommendations() {
   renderRecs();
 }
 
-/** Redraws the recommendations where they show: Home on phones, the empty search page on the desktop. */
+/** Redraws the recommendations on Home. */
 function renderRecs() {
-  if (!phone) return renderResults();
   const el = document.getElementById("home-recs");
   if (el) renderRecommendations(el);
 }
@@ -1618,12 +1650,8 @@ function renderRecommendations(el: HTMLElement) {
   }
   const names = recs.basis.slice(0, 3);
   const loading = recs.state === "loading";
-  // Phones show the artists as chips, which update first while new picks load.
-  const basis = !names.length
-    ? ""
-    : phone
-      ? `Because you like ${names.map((n) => `<span class="chip-label">${esc(n)}</span>`).join("")}`
-      : `Because you like ${names.slice(0, -1).map(esc).join(", ")}${names.length > 1 ? " and " : ""}${esc(names.at(-1))}`;
+  // The artists show as chips, which update first while new picks load.
+  const basis = names.length ? `Because you like ${names.map((n) => `<span class="chip-label">${esc(n)}</span>`).join("")}` : "";
   el.innerHTML = `${phone && loading ? `<div class="pull-spinner">${spinner(26)}</div>` : ""}
     <div class="recs-head">
       <div><h2>Recommended for you</h2><p>${basis}</p></div>
@@ -1696,23 +1724,26 @@ function renderEngineStatus() {
   if (view === "settings") renderSettings();
 }
 
-async function renderLibrary() {
-  // Phones import music files instead (Your music), so there are no folders.
-  if (phone) return renderCollection();
-  $("#view").innerHTML = `
+/** The desktop's Your music: the music folders and every song in them. */
+async function renderFolders() {
+  $("#view").innerHTML = `${backBar()}
     <header class="view-head">
-      <h1>Library</h1>
+      <span class="head-tile music-tile">${icon("music", 34)}</span>
+      <h1>Your music</h1>
+      <span class="head-count" id="music-count">${count(musicCount, "song")}</span>
       <div class="head-actions">
-        <button class="icon-btn" id="rescan" title="Rescan folders">${icon("refresh", 20)}</button>
-        <button class="btn primary" id="add-folder">${icon("folder", 18)}Add folder</button>
+        <button class="btn primary" id="play-music">${icon("play", 18)}Play</button>${shuffleButton("shuffle-music")}
+        <button class="btn add-all" id="add-folder">${icon("folder", 18)}<span>Add a folder</span></button>
+        <button class="icon-btn" id="rescan" title="Look for changes in the folders">${icon("refresh", 20)}</button>
       </div>
     </header>
     <div class="folders" id="folders"></div>
     <div class="scan-status" id="scan-status">${esc(scanStatus)}</div>
     <label class="search-box compact">${icon("search", 18)}
-      <input id="lib-q" type="search" placeholder="Filter your library" spellcheck="false" autocomplete="off" />
+      <input id="lib-q" type="search" placeholder="Find in your music" spellcheck="false" autocomplete="off" />
     </label>
     <div class="track-list" id="lib-list"></div>`;
+  bindBack();
   $("#add-folder").onclick = () => void addFolder();
   $("#rescan").onclick = () => {
     scanStatus = "Scanning…";
@@ -1721,11 +1752,11 @@ async function renderLibrary() {
   };
   const input = $<HTMLInputElement>("#lib-q");
   input.addEventListener("input", debounce(() => void loadLibraryTracks(input.value), 150));
-  renderFolders(await api.libraryFolders());
+  showFolders(await api.libraryFolders());
   await loadLibraryTracks("");
 }
 
-function renderFolders(folders: string[]) {
+function showFolders(folders: string[]) {
   const el = document.getElementById("folders");
   if (!el) return;
   el.innerHTML = folders
@@ -1734,20 +1765,24 @@ function renderFolders(folders: string[]) {
   el.onclick = async (e) => {
     const f = (e.target as HTMLElement).closest<HTMLElement>("button[data-f]")?.dataset.f;
     if (!f) return;
-    renderFolders(await api.libraryRemoveFolder(f));
+    showFolders(await api.libraryRemoveFolder(f));
     void loadLibraryTracks($<HTMLInputElement>("#lib-q")?.value ?? "");
   };
 }
 
-async function addFolder() {
+/** Picks a music folder and starts scanning it. True once one was added. */
+async function addFolder(): Promise<boolean> {
   const picked = await open({ directory: true, multiple: false, title: "Add a music folder" });
-  if (typeof picked !== "string") return;
+  if (typeof picked !== "string") return false;
   try {
-    renderFolders(await api.libraryAddFolder(picked));
+    showFolders(await api.libraryAddFolder(picked));
     scanStatus = "Scanning…";
-    $("#scan-status").textContent = scanStatus;
+    const status = document.getElementById("scan-status");
+    if (status) status.textContent = scanStatus;
+    return true;
   } catch (e) {
     toast(String(e), "error");
+    return false;
   }
 }
 
@@ -1755,18 +1790,31 @@ async function loadLibraryTracks(query: string) {
   const el = document.getElementById("lib-list");
   if (!el) return;
   const tracks = await api.libraryTracks(query.trim());
+  if (!query.trim()) {
+    musicCount = tracks.length;
+    renderPlaylistGrid();
+    const n = document.getElementById("music-count");
+    if (n) n.textContent = count(musicCount, "song");
+  }
+  // Play and Shuffle play what the list shows.
+  const from = "Your music";
+  const play = document.getElementById("play-music");
+  if (play) play.onclick = () => playFromTop(tracks, from);
+  const shuffle = document.getElementById("shuffle-music");
+  if (shuffle) shuffle.onclick = () => shuffleList(tracks, from);
   if (!tracks.length) {
     el.innerHTML = query.trim()
-      ? emptyState("search", "No matches", "Nothing in your library matches that.")
-      : emptyState("library", "Your library is empty", "Add a folder with music files (MP3, FLAC, WAV, OGG, M4A) to see them here.");
+      ? emptyState("search", "No matches", "None of your songs match that.")
+      : emptyState("folder", "No songs of your own yet", "Add a folder with music files (MP3, FLAC, WAV, OGG, M4A), like songs you can't find on YouTube. Cadence plays them from where they are.");
     return;
   }
-  mountTrackList(el, tracks, { from: "Library" });
+  mountTrackList(el, tracks, { from });
 }
 
-// ---- your music (phones) ----------------------------------------------------------
+// ---- your music -------------------------------------------------------------------
 
-/** How many songs were imported from the phone; Library shows a tile for them. */
+/** How many songs of your own there are (imported on a phone, in the music
+ *  folders on the desktop); Library shows a tile for them. */
 let musicCount = 0;
 let musicImporting = false;
 /** How far copying has got, while an import runs. */
@@ -1829,8 +1877,9 @@ function importNote(r: MusicImport, folder: boolean): string {
   return notes.join(" · ");
 }
 
-/** Phones: the songs imported from the phone's own files. */
+/** Phones: the songs imported from the phone's own files. The desktop has its folders. */
 async function renderMusic() {
+  if (!phone) return renderFolders();
   const tracks = await api.libraryTracks().catch(() => []);
   if (view !== "music") return;
   musicCount = tracks.length;
@@ -1895,8 +1944,8 @@ async function removeMusic(t: Track) {
 
 async function renderLiked() {
   const tracks = [...liked.values()];
-  // Phones open Liked songs from Library or Home.
-  $("#view").innerHTML = `${phone ? backBar() : ""}
+  // Liked songs opens from Library or Home (or the sidebar), and Back returns there.
+  $("#view").innerHTML = `${backBar()}
     <header class="view-head">
       <span class="head-tile">${icon("heartFilled", 34)}</span>
       <h1>Liked songs</h1>
@@ -1905,8 +1954,8 @@ async function renderLiked() {
         <button class="btn dl-all" id="download-liked" title="Download all" hidden>${icon("download", 18)}<span>Download all</span></button>
         ${
           tracks.length
-            ? `<button class="btn primary" id="play-liked">${icon("play", 18)}${phone ? "Play" : "Play all"}</button>${shuffleButton("shuffle-liked")}
-              <button class="btn ${phone ? "add-all" : ""}" id="liked-to-playlist" title="Add all to a playlist">${icon("playlistAdd", 18)}<span>Add all to a playlist</span></button>`
+            ? `<button class="btn primary" id="play-liked">${icon("play", 18)}Play</button>${shuffleButton("shuffle-liked")}
+              <button class="btn add-all" id="liked-to-playlist" title="Add all to a playlist">${icon("playlistAdd", 18)}<span>Add all to a playlist</span></button>`
             : ""
         }
       </div>
@@ -1946,9 +1995,9 @@ async function renderLiked() {
   updateDownloadLiked();
 }
 
-/** Phones: a Shuffle button beside Play. */
+/** A Shuffle button beside Play. */
 function shuffleButton(id: string): string {
-  return phone ? `<button class="btn outline shuffle-toggle ${player.shuffle ? "on" : ""}" id="${id}">${shuffleInner(18)}</button>` : "";
+  return `<button class="btn outline shuffle-toggle ${player.shuffle ? "on" : ""}" id="${id}">${shuffleInner(18)}</button>`;
 }
 
 /** A Shuffle button's icon and name: with smart shuffle on, the spark and "Smart". */
@@ -1956,7 +2005,7 @@ function shuffleInner(size: number): string {
   return player.smart ? `${icon("smartShuffle", size)}<span class="lbl">Smart</span>` : `${icon("shuffle", size)}<span class="lbl">Shuffle</span>`;
 }
 
-/** Phones: off, shuffle, smart shuffle, as Spotify's button, saying which. */
+/** Off, shuffle, smart shuffle, as Spotify's button, saying which. */
 function cycleShuffle() {
   player.cycleShuffle();
   toast(player.smart ? "Smart shuffle on · songs like these are mixed in" : player.shuffle ? "Shuffle on" : "Shuffle off");
@@ -1974,7 +2023,7 @@ function bindShuffle(id: string, tracks: Track[], from: string) {
 function shuffleList(tracks: Track[], from: string) {
   if (!tracks.length) return;
   const current = player.current;
-  if (current && player.from === from && tracks.some((t) => t.id === current.id)) return phone ? cycleShuffle() : player.setShuffle(!player.shuffle);
+  if (current && player.from === from && tracks.some((t) => t.id === current.id)) return cycleShuffle();
   player.setShuffle(true);
   player.playList(tracks, Math.floor(Math.random() * tracks.length), from);
 }
@@ -1984,13 +2033,13 @@ function playFromTop(tracks: Track[], from: string) {
   if (tracks.length) player.playList(tracks, player.shuffle ? Math.floor(Math.random() * tracks.length) : 0, from);
 }
 
-/** Phones offline: a YouTube song that isn't downloaded can't play. */
+/** Offline, a YouTube song that isn't downloaded can't play. */
 function unavailable(t: Track): boolean {
-  return phone && !navigator.onLine && t.id.startsWith("yt:") && downloads.get(t.id)?.state !== "done";
+  return !navigator.onLine && t.id.startsWith("yt:") && downloads.get(t.id)?.state !== "done";
 }
 
 function offlineBanner(): string {
-  if (!phone || navigator.onLine) return "";
+  if (navigator.onLine) return "";
   return `<div class="offline-banner" role="status">${icon("offline", 22)}<span><b>You're offline</b><small>Only downloaded songs will play</small></span></div>`;
 }
 
@@ -2004,7 +2053,7 @@ function notDownloaded(tracks: Track[]): Track[] {
 function downloadBadge(id: string): string {
   const d = downloads.get(id);
   if (!d) return "";
-  if (d.state === "done") return `<span class="dl done" title="Downloaded">${icon(phone ? "check" : "downloadDone", 14)}</span>`;
+  if (d.state === "done") return `<span class="dl done" title="Downloaded">${icon("check", 14)}</span>`;
   if (d.state === "downloading" && d.total) return `<span class="dl busy" title="Downloading">${Math.floor((d.done / d.total) * 100)}%</span>`;
   return `<span class="dl busy" title="Waiting to download">${icon("download", 14)}</span>`;
 }
@@ -2053,6 +2102,8 @@ function onDownload(item: DownloadItem) {
   if (isEpisode(item.track)) refreshEpisodeRows();
   updateDownloadLiked();
   updateDlChip();
+  // Progress alone doesn't change the sidebar's line.
+  if (item.state !== was) renderSidebar();
   if (id === player.current?.id) updateNowExtras();
   if (view !== "downloads") return;
   // Progress only moves a bar; anything else changes what is listed.
@@ -2304,7 +2355,7 @@ function hero(o: HeroOptions): string {
         <div class="hero-actions">
           ${o.tracks.length ? `<button class="btn primary" data-hero="play">${icon("play", 18)}Play</button>
           <button class="icon-btn shuffle-toggle ${player.shuffle ? "on" : ""}" data-hero="shuffle" title="Shuffle">${shuffleInner(22)}</button>
-          <button class="icon-btn" data-hero="playlist" title="Add all to a playlist or Liked songs">${icon(phone ? "playlistAdd" : "playlist", 22)}</button>
+          <button class="icon-btn" data-hero="playlist" title="Add all to a playlist or Liked songs">${icon("playlistAdd", 22)}</button>
           ${hasYouTube ? `<button class="icon-btn" data-hero="download" title="Download all">${icon("download", 22)}</button>` : ""}` : ""}
           ${o.extra ?? ""}
         </div>
@@ -2407,7 +2458,7 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
   if (p.kind === "album") {
     const a = await api.album(p.id);
     const meta = [linked(a.artist, a.artistId ? `artist:${a.artistId}` : null), esc(a.subtitle), count(a.tracks.length, "song"), totalTime(a.tracks)];
-    const extra = phone ? shareButton() : "";
+    const extra = shareButton();
     return {
       markup: hero({ art: imgUrl(a.thumbnail), fallback: "album", label: "Album", title: a.title, meta: meta.filter(Boolean).join(" · "), tracks: a.tracks, extra }) + albumList,
       mount: () => {
@@ -2422,7 +2473,7 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
     const a = await api.artist(p.id);
     const releases = (r: Release[]) => r.map((x) => ({ target: `album:${x.id}`, art: imgUrl(x.thumbnail), title: x.title, sub: x.year }));
     const meta = [a.albums.length ? count(a.albums.length, "album") : "", a.singles.length ? count(a.singles.length, "single") : ""];
-    const extra = phone ? followButton(a.id) + `<button class="icon-btn" data-hero="more" title="More">${icon("more", 22)}</button>` : "";
+    const extra = followButton(a.id) + `<button class="icon-btn" data-hero="more" title="More">${icon("more", 22)}</button>`;
     const markup =
       hero({ art: imgUrl(a.thumbnail), fallback: "person", round: true, label: "Artist", title: a.name, meta: meta.filter(Boolean).join(" · "), tracks: a.topSongs, extra }) +
       (a.topSongs.length ? `<section class="page-section"><h2>Top songs</h2>${list}</section>` : "") +
@@ -2545,16 +2596,12 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
           ...(pl.tracks.length
             ? [
                 { label: "Add all to…", icon: "playlistAdd", keep: true, run: () => showMenu(playlistMenu(pl.tracks, { skip: pl.id, liked: true })) } satisfies MenuItem,
-                ...(phone
-                  ? [
-                      { label: "Start radio", icon: "radio", run: () => void startRadio(pl.tracks, `${pl.name} radio`) } satisfies MenuItem,
-                      { label: "Share", icon: "share", run: () => shareTracks(pl.name, pl.tracks) } satisfies MenuItem,
-                      autoItem(pl.id),
-                    ]
-                  : []),
+                { label: "Start radio", icon: "radio", run: () => void startRadio(pl.tracks, `${pl.name} radio`) } satisfies MenuItem,
+                { label: "Share", icon: "share", run: () => shareTracks(pl.name, pl.tracks) } satisfies MenuItem,
+                autoItem(pl.id),
               ]
             : []),
-          ...(phone ? [pinItem(pl.id)] : []),
+          pinItem(pl.id),
           { label: "Rename…", icon: "edit", divider: pl.tracks.length > 0, run: () => void renamePlaylist(pl.id, pl.name) },
           ...coverItems(pl.id, !!pl.cover),
           { label: "Delete playlist", icon: "trash", run: () => void deletePlaylist(pl.id, pl.name) },
@@ -2570,7 +2617,7 @@ const QUALITIES: { id: DownloadQuality; name: string; note: string }[] = [
   { id: "low", name: "Data saver", note: "About 70 kbps · smallest files" },
 ];
 
-/** Phones: the engine, playback, the tab bar's look, download quality, importing music and backups. */
+/** The engine, playback, the tab bar's look (phones), download quality, your own music and backups. */
 function renderSettings() {
   const ready = !!engine?.installed;
   const quality = settings.get<DownloadQuality>("downloadQuality", "normal");
@@ -2600,10 +2647,14 @@ function renderSettings() {
       ${toggle("fade-pause", "fade", "Fade on play and pause", "Music fades in and out instead of stopping at once", player.fadePause)}
       ${toggle("autoplay", "autoplay", "Autoplay", "When a song or list ends, similar songs keep playing", player.autoplay)}
     </div>
-    <h2 class="section-label">Look</h2>
+    ${
+      phone
+        ? `<h2 class="section-label">Look</h2>
     <div class="box">
       ${toggle("float-nav", "floatBar", "Floating tab bar", "The tabs join the playing song in one see-through bubble", floatNav())}
-    </div>
+    </div>`
+        : ""
+    }
     <h2 class="section-label">Download quality</h2>
     <div class="box" id="dl-quality">
       ${QUALITIES.map(
@@ -2615,15 +2666,27 @@ function renderSettings() {
     <p class="setting-note">Applies to new downloads. Songs you already saved keep their quality.</p>
     <h2 class="section-label">Automatic downloads</h2>
     <div class="box">
-      ${toggle("auto-liked", "download", "Download liked songs", "On Wi-Fi, songs you like download by themselves", settings.get("autoDownloadLiked", false))}
+      ${toggle("auto-liked", "download", "Download liked songs", phone ? "On Wi-Fi, songs you like download by themselves" : "Songs you like download by themselves", settings.get("autoDownloadLiked", false))}
     </div>
-    <p class="setting-note">Playlists can download by themselves too: hold one in Library, or tap ⋮ on its page, and pick Download automatically.</p>
+    <p class="setting-note">${
+      phone
+        ? "Playlists can download by themselves too: hold one in Library, or tap ⋮ on its page, and pick Download automatically."
+        : "Playlists can download by themselves too: right-click one, or click ⋯ on its page, and pick Download automatically."
+    }</p>
     <h2 class="section-label">Your music</h2>
-    <div class="box">
+    ${
+      phone
+        ? `<div class="box">
       ${row("import-files", "music", "Import songs…", "Add music files from this phone")}
       ${row("import-folder", "folder", "Import a folder…", "Every song in a folder and the folders inside it")}
     </div>
-    <p class="setting-note">Cadence keeps its own copy of each song, so it stays even if the original moves. Find them in Library, under Your music.</p>
+    <p class="setting-note">Cadence keeps its own copy of each song, so it stays even if the original moves. Find them in Library, under Your music.</p>`
+        : `<div class="box">
+      ${row("add-folder", "folder", "Add a folder…", "Every song in it, and in the folders inside")}
+      ${row("open-music", "music", "Your music", count(musicCount, "song"))}
+    </div>
+    <p class="setting-note">Songs play from where they are, and changes in the folders show up by themselves.</p>`
+    }
     <h2 class="section-label">Backup</h2>
     <div class="box">
       ${row("backup", "upload", "Back up…", "Save playlists and likes to a file")}
@@ -2649,7 +2712,7 @@ function renderSettings() {
   };
   bindToggle("fade-pause", () => (player.setFadePause(!player.fadePause), player.fadePause));
   bindToggle("autoplay", () => (player.setAutoplay(!player.autoplay), player.autoplay));
-  bindToggle("float-nav", () => setFloatNav(!floatNav()));
+  if (phone) bindToggle("float-nav", () => setFloatNav(!floatNav()));
   bindToggle("auto-liked", () => {
     const on = !settings.get("autoDownloadLiked", false);
     settings.set("autoDownloadLiked", on);
@@ -2663,8 +2726,13 @@ function renderSettings() {
     settings.set("downloadQuality", picked.dataset.quality);
     document.querySelectorAll("#dl-quality [data-quality]").forEach((b) => b.setAttribute("aria-pressed", String(b === picked)));
   };
-  $("#import-files").onclick = () => void importMusic(false);
-  $("#import-folder").onclick = () => void importMusic(true);
+  if (phone) {
+    $("#import-files").onclick = () => void importMusic(false);
+    $("#import-folder").onclick = () => void importMusic(true);
+  } else {
+    $("#add-folder").onclick = () => void addFolder().then((added) => added && openMusic());
+    $("#open-music").onclick = openMusic;
+  }
   $("#backup").onclick = () => void backUp();
   $("#restore").onclick = () => void restoreBackup();
   const update = $<HTMLButtonElement>("#ytdlp-update");
@@ -2782,7 +2850,7 @@ function setFloatNav(on: boolean): boolean {
   return on;
 }
 
-// ---- Profile (phones) ---------------------------------------------------------------
+// ---- Profile ---------------------------------------------------------------------
 
 const PERIODS = [
   { id: "week", name: "Week", days: 7, note: "the last 7 days" },
@@ -2944,7 +3012,7 @@ async function loadArtistPhotos(el: HTMLElement, artists: ListeningStats["artist
   }
 }
 
-// ---- finding and sorting in lists (phones) ------------------------------------------
+// ---- finding and sorting in lists ------------------------------------------------
 
 type SortBy = "custom" | "title" | "artist" | "album";
 
@@ -2953,7 +3021,6 @@ const listSorts = settings.get<Record<string, SortBy>>("listSorts", {});
 
 /** A box that finds songs in the list below, and a button that sorts it. */
 function listTools(): string {
-  if (!phone) return "";
   return `<div class="list-tools">
     <label class="find-box">${icon("search", 18)}<input id="find" type="search" placeholder="Find in this list" spellcheck="false" autocomplete="off" /></label>
     <button class="icon-btn" id="sort-btn" title="Sort">${icon("sort", 22)}</button>
@@ -3016,7 +3083,7 @@ function arrange(tracks: Track[], by: SortBy, query: string): Track[] {
   return out;
 }
 
-// ---- daily mixes (phones) -----------------------------------------------------------
+// ---- daily mixes -----------------------------------------------------------------
 
 interface Mix {
   name: string;
@@ -3107,7 +3174,7 @@ async function makeMixes(): Promise<Mix[]> {
   return out;
 }
 
-// ---- radio, sleep timer, queue and pins (phones) -----------------------------------
+// ---- radio, sleep timer, queue and pins -----------------------------------------
 
 /**
  * Plays songs like `seeds` (YouTube Music's radio for up to six of them,
@@ -3191,6 +3258,9 @@ function sleepNote(): string | null {
 
 /** Now Playing's small line over the list's name shows a moon and the time left. */
 function showSleep() {
+  // The desktop's Now Playing panel says it in its header.
+  const head = document.getElementById("np-panel-from");
+  if (head) head.textContent = sleepNote() ?? (player.from || "Now playing");
   const from = document.getElementById("np-from");
   const label = from?.querySelector("span");
   if (!from || !label) return;
@@ -3234,9 +3304,9 @@ function bindQueueTools() {
   };
 }
 
-// ---- automatic downloads (phones) ---------------------------------------------------
+// ---- automatic downloads ---------------------------------------------------------
 
-/** Playlists whose songs download by themselves on Wi-Fi. */
+/** Playlists whose songs download by themselves (on phones, on Wi-Fi). */
 let autoLists = settings.get<number[]>("autoDownloadLists", []);
 
 function autoItem(id: number): MenuItem {
@@ -3249,7 +3319,7 @@ function autoItem(id: number): MenuItem {
     run: () => {
       autoLists = on ? autoLists.filter((l) => l !== id) : [...autoLists, id];
       settings.set("autoDownloadLists", autoLists);
-      toast(on ? "Stopped downloading automatically" : "Downloads automatically on Wi-Fi");
+      toast(on ? "Stopped downloading automatically" : phone ? "Downloads automatically on Wi-Fi" : "Downloads automatically");
       if (!on) void autoDownload();
     },
   };
@@ -3259,11 +3329,11 @@ let autoRunning = false;
 
 /**
  * Downloads liked songs and the chosen playlists' songs that aren't saved
- * yet, on Wi-Fi only. Runs when the app opens or comes back, when the
- * connection changes, and when songs are liked or added.
+ * yet, on phones on Wi-Fi only. Runs when the app opens or comes back, when
+ * the connection changes, and when songs are liked or added.
  */
 async function autoDownload() {
-  if (!phone || autoRunning || !engine?.installed) return;
+  if (autoRunning || !engine?.installed) return;
   const likedOn = settings.get("autoDownloadLiked", false);
   if (!likedOn && !autoLists.length) return;
   autoRunning = true;
@@ -3283,7 +3353,7 @@ async function autoDownload() {
   }
 }
 
-// ---- following artists (phones) -----------------------------------------------------
+// ---- following artists -----------------------------------------------------------
 
 /** Followed artists, latest first. */
 let following = settings.get<ArtistRef[]>("following", []);
@@ -3353,7 +3423,7 @@ async function renderNewReleases() {
   draw();
 }
 
-// ---- podcasts (phones) -------------------------------------------------------------
+// ---- podcasts -------------------------------------------------------------------
 
 let followedShows: Show[] = [];
 
@@ -3554,7 +3624,7 @@ async function renderNewEpisodes() {
   mountEpisodes($("#home-ep-list"), eps.slice(0, 6), true);
 }
 
-// ---- sharing (phones) --------------------------------------------------------------
+// ---- sharing --------------------------------------------------------------------
 
 /** A page opened from a shared link, which starts playing once it shows. */
 let playOnOpen: Page | null = null;
@@ -3569,10 +3639,13 @@ function onShare(fn: () => void) {
   document.querySelector<HTMLElement>('[data-hero="share"]')?.addEventListener("click", fn);
 }
 
-/** Opens Android's share sheet with a link other Cadence users can open. */
+/** Opens Android's share sheet with a link other Cadence users can open.
+ *  The desktop copies the link instead. */
 async function share(item: Shared) {
   try {
-    await api.share(item);
+    if (phone) return await api.share(item);
+    await navigator.clipboard.writeText(await api.shareLink(item));
+    toast("Link copied · paste it anywhere");
   } catch (e) {
     toast(String(e), "error");
   }
@@ -3592,7 +3665,11 @@ function shareTracks(name: string, tracks: Track[]) {
  *  to it), and starts playing it. An artist's page just opens. */
 async function openSharedLink() {
   const item = await api.sharedLink().catch((e) => (toast(String(e), "error"), null));
-  if (!item) return;
+  if (item) await openShared(item);
+}
+
+/** Opens a shared item (on the desktop, a link pasted into Search) and plays it. */
+async function openShared(item: Shared) {
   $("#menu").hidden = true;
   setSidePanel(null);
   if (item.kind === "song") {
@@ -3633,33 +3710,48 @@ async function saveShared(name: string, tracks: Track[], button: HTMLButtonEleme
 async function refreshPlaylists() {
   try {
     playlists = await api.playlists();
-    // Phones: pinned playlists come first, in the order they were pinned.
+    // Pinned playlists come first, in the order they were pinned.
     const rank = (p: PlaylistInfo) => (pinned.includes(p.id) ? pinned.indexOf(p.id) : pinned.length);
     playlists.sort((a, b) => rank(a) - rank(b));
   } catch (e) {
     toast(`Could not load playlists: ${e}`, "error");
   }
-  $("#playlists").innerHTML = playlists.length
-    ? playlists
-        .map(
-          (p) => `<button class="nav-item pl" data-pl="${p.id}" title="${esc(p.name)} · ${count(p.count, "song")}">
-            <span class="pl-art">${p.thumbnail ? `<img src="${esc(imgUrl(p.thumbnail))}" alt="" draggable="false" />` : icon("playlist", 16)}</span>
-            <span class="pl-name">${esc(p.name)}</span>
-          </button>`,
-        )
-        .join("")
-    : `<p class="pl-empty">Make one with +, or import one from YouTube or Spotify.</p>`;
-  // Phones list playlists on Library and Home.
+  // Library and Home list them, and the desktop's sidebar.
   renderPlaylistGrid();
   renderShortcuts();
+}
+
+/**
+ * The desktop's sidebar under Your Library, as in Spotify: Liked songs,
+ * Downloads and Your music, then the playlists (pinned first), the artists
+ * and the podcasts you follow.
+ */
+function renderSidebar() {
+  if (phone) return;
+  const row = (attrs: string, art: string, name: string, sub: string, round = false) =>
+    `<button class="nav-item pl" ${attrs} title="${name}">
+      <span class="pl-art ${round ? "round" : ""}">${art}</span>
+      <span class="pl-text"><span class="pl-name">${name}</span><span class="pl-sub">${sub}</span></span>
+    </button>`;
+  const img = (url: string | null, fallback: IconName) => (url ? `<img src="${esc(imgUrl(url))}" alt="" draggable="false" />` : icon(fallback, 18));
+  const saving = pendingDownloads().length;
+  const saved = [...downloads.values()].filter((d) => d.state === "done").length;
+  $("#playlists").innerHTML = [
+    row(`data-view="liked"`, `<span class="liked-art">${icon("heartFilled", 18)}</span>`, "Liked songs", `Playlist · ${count(liked.size, "song")}`),
+    row(`data-view="downloads"`, `<span class="liked-art dl-art">${icon("download", 18)}</span>`, "Downloads", saving ? `Downloading · ${saving} left` : count(saved, "song")),
+    row(`data-view="music"`, `<span class="liked-art music-art">${icon("music", 18)}</span>`, "Your music", musicCount ? count(musicCount, "song") : "Songs on this computer"),
+    ...playlists.map((p) =>
+      row(`data-pl="${p.id}"`, playlistArt(p, 18), esc(p.name), `${pinned.includes(p.id) ? icon("pin", 12) : ""}Playlist · ${count(p.count, "song")}`),
+    ),
+    ...following.map((a) => row(`data-go="artist:${esc(a.id)}"`, img(a.thumbnail, "person"), esc(a.name), "Artist", true)),
+    ...followedShows.map((s) => row(`data-go="podcast:${esc(s.id)}"`, img(s.artwork, "podcast"), esc(s.title), `Podcast${s.author ? ` · ${esc(s.author)}` : ""}`)),
+  ].join("");
   markNav();
 }
 
 function openPlaylist(id: number) {
-  // Phones: Back returns to where the playlist was opened from.
-  if (phone) return openPage({ kind: "playlist", id });
-  history.length = 0;
-  show("page", { kind: "playlist", id });
+  // Back returns to where the playlist was opened from.
+  openPage({ kind: "playlist", id });
 }
 
 function playlistNewMenu(e: MouseEvent) {
@@ -3669,9 +3761,8 @@ function playlistNewMenu(e: MouseEvent) {
   ]);
 }
 
-/** Phones: a playlist's menu items for its cover. */
+/** A playlist's menu items for its cover. */
 function coverItems(id: number, custom: boolean): MenuItem[] {
-  if (!phone) return [];
   return [
     { label: "Change cover…", icon: "image", sub: "Pick a photo from your phone", run: () => void changeCover(id) },
     ...(custom ? [{ label: "Use the first song's cover", icon: "restore", run: () => void changeCover(id, true) } satisfies MenuItem] : []),
@@ -3682,12 +3773,45 @@ function coverItems(id: number, custom: boolean): MenuItem[] {
 async function changeCover(id: number, clear = false) {
   try {
     if (clear) await api.playlistCoverClear(id);
-    else if (!(await api.playlistCoverPick(id))) return;
+    else if (!phone) {
+      const jpeg = await pickCover();
+      if (!jpeg) return;
+      await api.playlistCoverSet(id, jpeg);
+    } else if (!(await api.playlistCoverPick(id))) return;
   } catch (e) {
     return toast(String(e), "error");
   }
   await refreshPlaylists();
   refreshPlaylistPage(id);
+}
+
+/**
+ * The desktop: a photo picked in the file dialog, cut square from its middle
+ * and scaled to 640 px as a JPEG, as Android's photo picker does on phones
+ * (Pictures.kt). Null when none was picked.
+ */
+function pickCover(): Promise<Uint8Array | null> {
+  return new Promise((done) => {
+    const input = Object.assign(document.createElement("input"), { type: "file", accept: "image/*" });
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return done(null);
+      try {
+        const bitmap = await createImageBitmap(file);
+        const side = Math.min(bitmap.width, bitmap.height);
+        const size = Math.min(640, side);
+        const canvas = Object.assign(document.createElement("canvas"), { width: size, height: size });
+        canvas.getContext("2d")!.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+        done(blob ? new Uint8Array(await blob.arrayBuffer()) : null);
+      } catch {
+        toast("That picture can't be used", "error");
+        done(null);
+      }
+    };
+    input.oncancel = () => done(null);
+    input.click();
+  });
 }
 
 /** Re-renders the page if it shows this playlist, keeping the scroll spot. */
@@ -3758,7 +3882,7 @@ async function deletePlaylist(id: number, name: string) {
   settings.set("autoDownloadLists", autoLists);
   await refreshPlaylists();
   // Phones stay in Library, where playlists live.
-  if (page?.kind === "playlist" && page.id === id) setView(phone ? "library" : "search");
+  if (page?.kind === "playlist" && page.id === id) setView("library");
   toast(`Deleted ${name}`);
 }
 
@@ -3942,18 +4066,75 @@ async function confirmBox(o: { title: string; body: string; ok: string; danger?:
 // ---- side panel ----------------------------------------------------------------
 
 /** The right-hand panel shows the queue or the lyrics, one at a time. */
-type Side = "queue" | "lyrics" | null;
+/** What the right-hand column shows: the queue, the lyrics, or (desktop) Now Playing. */
+type Side = "queue" | "lyrics" | "now" | null;
 let side: Side = null;
 
 function setSidePanel(next: Side) {
   side = next;
   $("#queue-panel").hidden = next !== "queue";
   $("#lyrics-panel").hidden = next !== "lyrics";
+  $("#now-panel").hidden = next !== "now";
   $("#btn-queue").classList.toggle("on", next === "queue");
   $("#btn-lyrics").classList.toggle("on", next === "lyrics");
+  $("#btn-now").classList.toggle("on", next === "now");
   settings.set("sidePanel", next);
   if (next === "queue") renderQueue();
   if (next === "lyrics") void loadLyrics();
+  if (next === "now") renderNowPanel();
+}
+
+// ---- Now Playing panel (desktop) ---------------------------------------------------
+
+/**
+ * Spotify's Now Playing view: the cover, the song with its like and download
+ * buttons, where it plays from (or the sleep timer), and the next songs.
+ */
+function renderNowPanel() {
+  const body = $("#np-body");
+  if ($("#now-panel").hidden) return;
+  const t = player.current;
+  if (!t) return void (body.innerHTML = `<p class="muted pad">Nothing playing.</p>`);
+  const dl = downloads.get(t.id)?.state;
+  const canSave = t.id.startsWith("yt:") || isEpisode(t);
+  const on = liked.has(t.id);
+  const next = player.queue.slice(player.index + 1, player.index + 4);
+  showSleep();
+  body.innerHTML = `
+    <div class="np-cover">${artHtml(t, "lg")}</div>
+    <div class="np-song">
+      <div class="np-text">
+        <div class="np-title" data-len="${titleLength(t.title)}">${linked(t.title, albumTarget(t))}</div>
+        <div class="np-artist">${artistLinks(t)}</div>
+      </div>
+      ${isEpisode(t) ? "" : `<button class="icon-btn like ${on ? "on" : ""}" data-np="like" title="${on ? "Remove from liked songs" : "Like"}">${icon(on ? "heartFilled" : "heart", 22)}</button>`}
+      ${canSave ? `<button class="icon-btn ${dl === "done" ? "on" : ""}" data-np="download" title="${dl === "done" ? "Downloaded · click to remove" : dl ? "Downloading · click to cancel" : "Download"}">${icon(dl === "done" ? "downloadDone" : dl ? "close" : "download", 22)}</button>` : ""}
+    </div>
+    ${
+      next.length
+        ? `<section class="np-card">
+            <header><h3>Next in queue</h3><button class="text-btn" data-np="queue">Open queue</button></header>
+            ${next
+              .map(
+                (n, j) => `<div class="q-item" data-np-next="${player.index + 1 + j}">
+                  <div class="q-art">${artHtml(n)}</div>
+                  <div class="q-text"><div class="q-title">${esc(n.title)}</div><div class="q-artist">${esc(n.artist)}</div></div>
+                </div>`,
+              )
+              .join("")}
+          </section>`
+        : ""
+    }`;
+  body.onclick = (e) => {
+    const el = e.target as HTMLElement;
+    const act = el.closest<HTMLElement>("[data-np]")?.dataset.np;
+    const nextAt = el.closest<HTMLElement>("[data-np-next]")?.dataset.npNext;
+    if (el.closest("[data-go]")) openLink(e, t);
+    else if (act === "like") void toggleLike(t);
+    else if (act === "download") void (downloads.has(t.id) ? removeDownload(t) : downloadTracks([t]));
+    else if (act === "queue") setSidePanel("queue");
+    else if (nextAt) player.jump(Number(nextAt));
+  };
 }
 
 function toggleSidePanel(panel: Exclude<Side, null>) {
@@ -3974,9 +4155,9 @@ function renderQueue() {
   }
   // After the playing song: the songs queued by hand, then the rest of the list.
   // Phones name the list the rest comes from, as in "Next from Liked songs".
-  const nextUp = phone && player.from ? `Next from ${esc(player.from)}` : "Next up";
+  const nextUp = player.from ? `Next from ${esc(player.from)}` : "Next up";
   const label = (i: number) => {
-    if (phone && i === player.index) return `<div class="q-label">Now playing</div>`;
+    if (i === player.index) return `<div class="q-label">Now playing</div>`;
     if (i <= player.index) return "";
     if (player.isAutoplayed(i)) {
       return player.isAutoplayed(i - 1) && i - 1 > player.index ? "" : `<div class="q-label">Autoplay · similar songs</div>`;
@@ -4306,16 +4487,17 @@ function bindLyrics() {
     lyricsView.holdUntil = 0;
     player.seek(line.time);
   };
-  if (phone) bindLyricsCards();
+  bindLyricsCards();
 }
 
-// ---- lyrics cards (phones) ----------------------------------------------------------
+// ---- lyrics cards ----------------------------------------------------------------
 
 /** Lyric lines picked for a card, by their place in the lyrics. */
 const picked = new Set<number>();
 const MAX_PICKED = 5;
 
-/** Holding a line starts picking; taps then add or drop lines (up to five). */
+/** Holding a line (right-clicking it on the desktop) starts picking; taps
+ *  then add or drop lines (up to five). */
 function bindLyricsCards() {
   const body = $("#lyrics-body");
   const lines = () => [...body.querySelectorAll<HTMLElement>("p")];
@@ -4327,7 +4509,8 @@ function bindLyricsCards() {
     lines().forEach((p, i) => p.classList.toggle("picked", picked.has(i)));
     body.classList.toggle("picking", picked.size > 0);
     $("#lyrics-pick").hidden = !picked.size;
-    $("#lyrics-pick-share").textContent = picked.size > 1 ? `Share ${picked.size} lines` : "Share";
+    // The desktop saves the card as a picture rather than sharing it.
+    $("#lyrics-pick-share").textContent = !phone ? "Save as picture" : picked.size > 1 ? `Share ${picked.size} lines` : "Share";
     // Keep the lines still while picking.
     lyricsView.holdUntil = picked.size ? Infinity : 0;
   };
@@ -4372,7 +4555,8 @@ function bindLyricsCards() {
   player.addEventListener("track", cancel);
 }
 
-/** Draws a card with the lines, the cover and the song, and shares it as a picture. */
+/** Draws a card with the lines, the cover and the song, and shares it as a
+ *  picture (the desktop saves it where the user picks). */
 async function shareLyrics(track: Track, lines: string[]) {
   try {
     const W = 1080;
@@ -4426,7 +4610,17 @@ async function shareLyrics(track: Track, lines: string[]) {
     ctx.fillText("cadence", pad + 76, H - 121);
     const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/jpeg", 0.92));
     if (!blob) throw new Error("Couldn't make the picture");
-    await api.shareImage(new Uint8Array(await blob.arrayBuffer()));
+    const jpeg = new Uint8Array(await blob.arrayBuffer());
+    if (phone) return await api.shareImage(jpeg);
+    const name = `${track.title} lyrics`.replace(/[\\/:*?"<>|]/g, "").trim() || "Lyrics";
+    const path = await save({
+      title: "Save the lyrics card",
+      defaultPath: await join(await pictureDir().catch(() => documentDir()), `${name}.jpg`),
+      filters: [{ name: "JPEG picture", extensions: ["jpg"] }],
+    });
+    if (!path) return;
+    await api.imageSave(path, jpeg);
+    toast("Lyrics card saved");
   } catch (e) {
     toast(String(e), "error");
   }
@@ -4510,8 +4704,7 @@ function sendMiniState() {
     time: a.currentTime,
     duration: isFinite(a.duration) ? a.duration : (player.current?.duration ?? 0),
     liked: !!player.current && liked.has(player.current.id),
-    accent: root.getPropertyValue("--accent") || null,
-    onAccent: root.getPropertyValue("--on-accent") || null,
+    art: root.getPropertyValue("--art") || null,
   };
   void emitTo("mini", "mini-state", state);
 }
@@ -4627,9 +4820,8 @@ function updateNowPlaying() {
   void updateAccent(t);
 }
 
-/** Phones: where the song is playing from, and whether it is downloaded. */
+/** Where the song is playing from, and whether it is downloaded. */
 function updateNowExtras() {
-  if (!phone) return;
   const t = player.current;
   const from = $("#np-from");
   from.hidden = !player.from && sleepAt === null;
@@ -4640,6 +4832,7 @@ function updateNowExtras() {
   btn.classList.toggle("on", dl === "done");
   btn.title = dl === "done" ? "Downloaded · tap to remove" : dl ? "Downloading · tap to cancel" : "Download";
   setIcon(btn, dl === "done" ? "downloadDone" : dl ? "close" : "download", 22);
+  renderNowPanel();
 }
 
 function updateNowLike() {
@@ -4648,6 +4841,11 @@ function updateNowLike() {
   const btn = $("#now-like");
   btn.classList.toggle("on", on);
   setIcon(btn, on ? "heartFilled" : "heart", 20);
+  const panelLike = document.querySelector<HTMLElement>('#np-body [data-np="like"]');
+  if (panelLike) {
+    panelLike.classList.toggle("on", on);
+    setIcon(panelLike, on ? "heartFilled" : "heart", 22);
+  }
   sendMiniState();
 }
 
@@ -4670,7 +4868,7 @@ function updateState() {
   }
   document.querySelectorAll<HTMLElement>(".shuffle-toggle").forEach((b) => {
     b.classList.toggle("on", player.shuffle);
-    if (phone && b.dataset.smart !== String(player.smart)) {
+    if (b.dataset.smart !== String(player.smart)) {
       b.innerHTML = shuffleInner(b.dataset.hero ? 22 : 18);
       b.dataset.smart = String(player.smart);
     }
@@ -4713,8 +4911,6 @@ async function updateAccent(track: Track | null) {
   const token = ++accentToken;
   const reset = () => {
     if (token !== accentToken) return;
-    root.style.removeProperty("--accent");
-    root.style.removeProperty("--on-accent");
     root.style.removeProperty("--art");
     sendMiniState();
   };
@@ -4723,11 +4919,8 @@ async function updateAccent(track: Track | null) {
   if (token !== accentToken) return;
   if (!color) return reset();
   const [r, g, b] = color;
-  // Phones keep their red; the cover only tints the glow behind the player.
-  if (phone) return root.style.setProperty("--art", `rgb(${r}, ${g}, ${b})`);
-  root.style.setProperty("--accent", `rgb(${r}, ${g}, ${b})`);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  root.style.setProperty("--on-accent", luminance > 0.55 ? "#111" : "#fff");
+  // The app keeps its red; the cover only tints the glow behind the player.
+  root.style.setProperty("--art", `rgb(${r}, ${g}, ${b})`);
   sendMiniState();
 }
 
@@ -4761,14 +4954,14 @@ async function artColor(url: string): Promise<[number, number, number] | null> {
   return [best.r + lift, best.g + lift, best.b + lift];
 }
 
-/** Phones: a page's header glows with its cover's color. */
+/** A page's header glows with its cover's color. */
 async function tintPage(token: number) {
   const view = $("#view");
   view.style.removeProperty("--page-art");
   // A genre has no cover; it glows with its tile's color.
   if (page?.kind === "category") return view.style.setProperty("--page-art", genre(page.name).color);
   const src = view.querySelector<HTMLImageElement>(".hero-art img")?.src;
-  const color = phone && src ? await artColor(src) : null;
+  const color = src ? await artColor(src) : null;
   if (color && token === pageToken) view.style.setProperty("--page-art", `rgb(${color.join(", ")})`);
 }
 
@@ -4781,12 +4974,13 @@ function bindPlayerBar() {
   $("#btn-prev").onclick = () => (isEpisode(player.current) ? skipBy(-15) : player.prev());
   $("#btn-shuffle").onclick = (e) => {
     if (isEpisode(player.current)) return speedMenu(e);
-    if (!phone) return player.setShuffle(!player.shuffle);
     cycleShuffle();
   };
   $("#btn-repeat").onclick = () => player.cycleRepeat();
   $("#btn-mute").onclick = () => player.toggleMute();
   $("#btn-queue").onclick = () => toggleSidePanel("queue");
+  $("#btn-now").onclick = () => toggleSidePanel("now");
+  $("#np-panel-more").onclick = (e) => player.current && openMenu(e, player.current, [sleepItem()]);
   $("#btn-lyrics").onclick = () => toggleSidePanel("lyrics");
   $("#btn-eq").onclick = () => setEqOpen(Boolean($("#eq-panel").hidden));
   $("#now-like").onclick = () => player.current && void toggleLike(player.current);
@@ -4831,6 +5025,7 @@ function bindPlayerBar() {
   });
   player.addEventListener("queue", () => {
     renderQueue();
+    renderNowPanel();
     markPlaying();
   });
   player.addEventListener("error", (e) => toast((e as CustomEvent<string>).detail, "error"));
@@ -4867,7 +5062,8 @@ function bindKeys() {
     }
     if (ctrl && e.key.toLowerCase() === "f") {
       e.preventDefault();
-      if (view === "library") $<HTMLInputElement>("#lib-q")?.focus();
+      if (view === "music") $<HTMLInputElement>("#lib-q")?.focus();
+      else if (document.getElementById("find")) $<HTMLInputElement>("#find").focus();
       else if (view === "search") $<HTMLInputElement>("#q")?.focus();
       else setView("search");
       return;
@@ -4909,6 +5105,7 @@ async function boot() {
   bindQueue();
   bindLyrics();
   bindKeys();
+  bindCommon();
   bindPhone();
   trackListening(player);
   trackPodcasts(player, refreshEpisodeRows);
@@ -4918,15 +5115,17 @@ async function boot() {
   document.querySelectorAll<HTMLElement>(".nav-item[data-view]").forEach((b) => {
     b.onclick = () => setView(b.dataset.view as Exclude<View, "page">);
   });
+  // The desktop's Your Library: each opens with Back to where it was opened from.
   $("#playlists").addEventListener("click", (e) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-pl]")?.dataset.pl;
-    if (id) openPlaylist(Number(id));
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".nav-item");
+    if (el?.dataset.pl) openPlaylist(Number(el.dataset.pl));
+    else if (el?.dataset.go) openTarget(el.dataset.go);
+    else if (el?.dataset.view) {
+      history.push({ view, page, scroll: $("#view").scrollTop });
+      show(el.dataset.view as View, null);
+    }
   });
-  $("#app-menu").onclick = (e) =>
-    menuUnder(e, [
-      { label: "Back up…", run: () => void backUp() },
-      { label: "Restore from a backup…", run: () => void restoreBackup() },
-    ]);
+  $("#app-menu").onclick = openSettings;
   $("#playlist-new").onclick = playlistNewMenu;
   // Links outside track lists: page headers, album and artist cards, the player bar.
   for (const area of [$("#view"), $(".now-text")]) {
@@ -4970,7 +5169,8 @@ async function boot() {
     scanStatus = p.finished ? "" : `Scanning ${p.folder} · ${p.done} of ${p.total} files`;
     const el = document.getElementById("scan-status");
     if (el) el.textContent = scanStatus;
-    if (p.finished && view === "library") void loadLibraryTracks($<HTMLInputElement>("#lib-q")?.value ?? "");
+    if (p.finished && view === "music") void loadLibraryTracks($<HTMLInputElement>("#lib-q")?.value ?? "");
+    else if (p.finished) void refreshMusicCount();
   });
   await listen<string>("library-scan-error", (e) => toast(`Library scan failed: ${e.payload}`, "error"));
   await listen<{ downloaded: number; total: number | null }>("ytdlp-progress", (e) => {
@@ -4998,8 +5198,8 @@ async function boot() {
     toast(`Could not load downloads: ${e}`, "error");
   }
   await refreshPlaylists();
-  if (phone) await refreshMusicCount();
-  if (phone) await refreshFollowedShows();
+  await refreshMusicCount();
+  await refreshFollowedShows();
   await listen<{ done: number; total: number }>("import-progress", (e) => importStatus?.(e.payload));
   const safetyCopy = settings.get<string | null>("restoredFrom", null);
   if (safetyCopy) {
@@ -5019,10 +5219,10 @@ async function boot() {
   renderEngineStatus();
   renderEngineBanner();
 
+  void autoDownload();
+  window.addEventListener("online", () => void autoDownload());
   if (phone) {
     void checkAppUpdate(true);
-    void autoDownload();
-    window.addEventListener("online", () => void autoDownload());
     (navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener("change", () => void autoDownload());
     onAway((away) => !away && void autoDownload());
     // Back from allowing installs from Cadence: carry on with the update.

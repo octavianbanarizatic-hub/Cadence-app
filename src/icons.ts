@@ -35,8 +35,8 @@ const paths = {
   drag: "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
 };
 
-// Phones use the redesign's line icons, drawn with a 2px stroke. Names that
-// only exist here are only used on phones.
+// The redesign's line icons, drawn with a 2px stroke, used wherever a name
+// has one; the filled ones above are for the rest.
 const lines = {
   home: "M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z",
   crossfade: "M3 7c7 0 11 10 18 10M3 17c7 0 11-10 18-10",
@@ -88,6 +88,10 @@ const lines = {
   restore: "M12 4v11M7 10l5 5 5-5M5 14v6h14v-6",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
+  nowPlaying: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM14 5v14M7 10l3 2-3 2z",
+  volume: "M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
+  mute: "M4 9h4l5-4v14l-5-4H4zM17 9.5l5 5M22 9.5l-5 5",
+  miniPlayer: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM12 12h6v4h-6z",
   image: "M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4 16l5-5 4 4 2-2 5 5M15 8.5h.01",
   offline: "M3 3l18 18M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.3-2.4M12 8a14 14 0 0 1 9.5 3.7M2.5 9.4A14 14 0 0 1 6.4 7.2M12 20h.01",
   cloudOff: "M3 3l18 18M9 18h8a4 4 0 0 0 1.6-7.7A6 6 0 0 0 10 6.2M6.4 8.4A5 5 0 0 0 7 18",
@@ -105,17 +109,15 @@ const fills = {
   prev: "M19 5.5v13a1 1 0 0 1-1.5.8L8 12.8a1 1 0 0 1 0-1.6l9.5-6.5a1 1 0 0 1 1.5.8zM5.5 5A1.5 1.5 0 0 1 7 6.5v11a1.5 1.5 0 0 1-3 0v-11A1.5 1.5 0 0 1 5.5 5z",
 };
 
-const phone = /Android/i.test(navigator.userAgent);
-
 export type IconName = keyof typeof paths | keyof typeof lines;
 
 export function icon(name: IconName, size = 24): string {
   const open = `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">`;
   const line = name in lines ? lines[name as keyof typeof lines] : undefined;
-  if (line && (phone || !(name in paths))) {
+  if (line) {
     return `${open}<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="${line}"/></svg>`;
   }
-  const fill = phone && name in fills ? fills[name as keyof typeof fills] : paths[name as keyof typeof paths];
+  const fill = name in fills ? fills[name as keyof typeof fills] : paths[name as keyof typeof paths];
   return `${open}<path fill="currentColor" d="${fill}"/></svg>`;
 }
 

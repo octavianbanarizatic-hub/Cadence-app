@@ -6,23 +6,24 @@
     <title>Cadence</title>
     <link rel="stylesheet" href="/src/styles.css" />
     <link rel="stylesheet" href="/src/phone.css" />
+    <link rel="stylesheet" href="/src/desktop.css" />
   </head>
   <body>
     <div class="app">
       <nav class="sidebar">
         <div class="brand"><svg class="mark" width="26" height="26" viewBox="14 14 72 72" aria-hidden="true"><defs><mask id="brand-m" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><circle cx="70.01" cy="51.7" r="9"/></mask><mask id="brand-p" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><circle cx="50" cy="50" r="25"/></mask></defs><g mask="url(#brand-m)"><path d="M18.05 61.63A34 10 -20 0 1 46.58 40.6A34 10 -20 0 1 81.95 38.37" fill="none" stroke="#7a2229" stroke-width="5" stroke-linecap="round" mask="url(#brand-p)"/><path d="M30.5 50a19.5 19.5 0 1 0 39 0a19.5 19.5 0 1 0-39 0zM30.73 53H69.27A19.5 19.5 0 0 1 68.71 55.5H31.29A19.5 19.5 0 0 1 30.73 53zM32.7 59H67.3A19.5 19.5 0 0 1 65.37 62H34.63A19.5 19.5 0 0 1 32.7 59zM36.96 64.5H63.04A19.5 19.5 0 0 1 54.39 69H45.61A19.5 19.5 0 0 1 36.96 64.5z" fill="#e5343c" fill-rule="evenodd"/><path d="M81.95 38.37A34 10 -20 0 1 53.42 59.4A34 10 -20 0 1 18.05 61.63" fill="none" stroke="#7a2229" stroke-width="5" stroke-linecap="round"/></g><circle cx="70.01" cy="51.7" r="6" fill="#eef0f5"/></svg>Cadence</div>
+        <button class="nav-item" data-view="home" data-icon="home">Home</button>
         <button class="nav-item" data-view="search" data-icon="search">Search</button>
-        <button class="nav-item" data-view="library" data-icon="library">Library</button>
-        <button class="nav-item" data-view="liked" data-icon="heart">Liked songs</button>
-        <button class="nav-item" data-view="downloads" data-icon="download">Downloads</button>
+        <button class="nav-item" data-view="profile" data-icon="person">Profile</button>
         <div class="playlists-head">
-          <span>Playlists</span>
+          <button class="nav-item lib-head" data-view="library" data-icon="library">Your Library</button>
           <button class="icon-btn tiny" id="playlist-new" title="New playlist or import" data-icon="add"></button>
         </div>
+        <!-- Liked songs, Downloads, Your music, playlists, artists and podcasts (renderSidebar). -->
         <div class="playlists" id="playlists"></div>
         <div class="sidebar-foot">
           <div class="engine" id="engine-status"></div>
-          <button class="icon-btn tiny" id="app-menu" title="Back up and restore" data-icon="settings"></button>
+          <button class="icon-btn tiny" id="app-menu" title="Settings" data-icon="settings"></button>
         </div>
       </nav>
 
@@ -45,6 +46,16 @@
           <button class="play-btn" id="q-play" title="Play"></button>
           <button class="icon-btn" id="q-next" title="Next" data-icon="next"></button>
         </div>
+      </aside>
+
+      <!-- The desktop: the playing song, big, and what comes next. -->
+      <aside class="queue-panel now-panel" id="now-panel" hidden>
+        <header class="queue-head">
+          <h2 id="np-panel-from">Now playing</h2>
+          <button class="icon-btn small" id="np-panel-more" title="More" data-icon="more"></button>
+          <button class="icon-btn small panel-close" data-close-panel title="Close" data-icon="close"></button>
+        </header>
+        <div class="np-body" id="np-body"></div>
       </aside>
 
       <aside class="queue-panel lyrics-panel" id="lyrics-panel" hidden>
@@ -91,6 +102,7 @@
         <div class="extras">
           <button class="icon-btn small toggle" id="btn-eq" title="Equalizer" data-icon="eq"><span class="lbl">Equalizer</span></button>
           <button class="icon-btn small toggle" id="btn-lyrics" title="Lyrics (L)" data-icon="lyrics"><span class="lbl">Lyrics</span></button>
+          <button class="icon-btn small toggle" id="btn-now" title="Now playing view" data-icon="nowPlaying"></button>
           <button class="icon-btn small toggle" id="btn-queue" title="Queue" data-icon="queue"><span class="lbl">Queue</span></button>
           <button class="icon-btn small" id="btn-mini" title="Mini player" data-icon="miniPlayer"></button>
           <button class="icon-btn small" id="btn-mute" title="Mute"></button>

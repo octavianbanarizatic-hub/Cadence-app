@@ -10,9 +10,8 @@ export interface MiniState {
   time: number;
   duration: number;
   liked: boolean;
-  /** The album-art accent color; null means the theme default. */
-  accent: string | null;
-  onAccent: string | null;
+  /** The cover's color, which tints the window; null for none. */
+  art: string | null;
 }
 
 /** Sent by the mini player as `mini-command`. */

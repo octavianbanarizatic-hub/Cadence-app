@@ -447,6 +447,39 @@ pub fn share_image(app: AppHandle, jpeg: Vec<u8>) -> CmdResult<()> {
     }
 }
 
+/// The link to `item`. The desktop copies it; phones open the share sheet (`share`).
+#[tauri::command]
+pub fn share_link(item: share::Shared) -> CmdResult<String> {
+    if !item.valid() {
+        return Err("That can't be shared.".into());
+    }
+    Ok(share::link(&item))
+}
+
+/// What a link pasted into Search opens: a Cadence link, or a YouTube or
+/// YouTube Music one. None for anything else, which is searched for as text.
+#[tauri::command]
+pub fn open_link(text: String) -> Option<share::Shared> {
+    let text = text.trim();
+    share::parse(text).or_else(|| share::parse_youtube(text))
+}
+
+/// The desktop: saves a picture the page drew (a lyrics card) where the user
+/// chose in the save dialog.
+#[tauri::command]
+pub async fn image_save(path: String, jpeg: Vec<u8>) -> CmdResult<()> {
+    let path = std::path::PathBuf::from(path);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if !is_jpeg(&jpeg) || !matches!(ext.as_str(), "jpg" | "jpeg") {
+        return Err("The picture can only be saved as a .jpg file.".into());
+    }
+    std::fs::write(&path, jpeg).map_err(|e| e.to_string())
+}
+
+fn is_jpeg(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+}
+
 /// Phones: whether the connection is Wi-Fi (or another that isn't metered);
 /// automatic downloads wait for one. The desktop is always fine.
 #[tauri::command]
@@ -545,15 +578,8 @@ pub async fn playlist_cover_pick(app: AppHandle, id: i64) -> CmdResult<bool> {
     {
         use tauri_plugin_cadence_android::CadenceAndroidExt;
         let state = app.state::<AppState>();
-        let dir = state.playlist_covers();
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        // A new name each time, so the page never shows a cached old photo.
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let name = format!("{id}-{stamp}.jpg");
-        let path = dir.join(&name).to_string_lossy().into_owned();
+        let (name, path) = new_cover(&state, id)?;
+        let path = path.to_string_lossy().into_owned();
         let handle = app.clone();
         let saved = tauri::async_runtime::spawn_blocking(move || handle.cadence_android().pick_cover(&path))
             .await
@@ -561,10 +587,7 @@ pub async fn playlist_cover_pick(app: AppHandle, id: i64) -> CmdResult<bool> {
         if !saved {
             return Ok(false);
         }
-        let old = db::set_playlist_cover(&state.db.lock().unwrap(), id, Some(&name)).map_err(db_err)?;
-        if let Some(old) = old.and_then(|old| state.playlist_cover(&old)) {
-            let _ = std::fs::remove_file(old);
-        }
+        use_cover(&state, id, &name)?;
         Ok(true)
     }
     #[cfg(desktop)]
@@ -572,6 +595,40 @@ pub async fn playlist_cover_pick(app: AppHandle, id: i64) -> CmdResult<bool> {
         let _ = (app, id);
         Err("Covers are picked on phones.".into())
     }
+}
+
+/// The desktop: a playlist's cover from a photo the page cut square (JPEG bytes).
+#[tauri::command]
+pub async fn playlist_cover_set(state: State<'_, AppState>, id: i64, jpeg: Vec<u8>) -> CmdResult<()> {
+    if !is_jpeg(&jpeg) {
+        return Err("That picture can't be used.".into());
+    }
+    let (name, path) = new_cover(&state, id)?;
+    std::fs::write(&path, jpeg).map_err(|e| e.to_string())?;
+    use_cover(&state, id, &name)
+}
+
+/// A file for a playlist's new cover. A new name each time, so the page never
+/// shows a cached old photo.
+fn new_cover(state: &AppState, id: i64) -> CmdResult<(String, std::path::PathBuf)> {
+    let dir = state.playlist_covers();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let name = format!("{id}-{stamp}.jpg");
+    let path = dir.join(&name);
+    Ok((name, path))
+}
+
+/// Makes the saved file `name` the playlist's cover and deletes the one before.
+fn use_cover(state: &AppState, id: i64, name: &str) -> CmdResult<()> {
+    let old = db::set_playlist_cover(&state.db.lock().unwrap(), id, Some(name)).map_err(db_err)?;
+    if let Some(old) = old.and_then(|old| state.playlist_cover(&old)) {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(())
 }
 
 /// Goes back to the first song's cover.

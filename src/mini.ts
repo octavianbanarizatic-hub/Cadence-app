@@ -54,13 +54,8 @@ function render() {
   setIcon(like, s?.liked ? "heartFilled" : "heart", 18);
 
   const root = document.documentElement;
-  for (const [prop, value] of [
-    ["--accent", s?.accent],
-    ["--on-accent", s?.onAccent],
-  ] as const) {
-    if (value) root.style.setProperty(prop, value);
-    else root.style.removeProperty(prop);
-  }
+  if (s?.art) root.style.setProperty("--art", s.art);
+  else root.style.removeProperty("--art");
   renderTime();
 }
 

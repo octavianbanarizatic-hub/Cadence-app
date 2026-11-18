@@ -276,6 +276,12 @@ export const api = {
   shareImage: (jpeg: Uint8Array) => invoke<void>("share_image", { jpeg: Array.from(jpeg) }),
   /** Phones: what the link that opened the app shares, once. */
   sharedLink: () => invoke<Shared | null>("shared_link"),
+  /** The link to `item`; the desktop copies it. */
+  shareLink: (item: Shared) => invoke<string>("share_link", { item }),
+  /** What a Cadence, YouTube or YouTube Music link pasted into Search opens; null for other text. */
+  openLink: (text: string) => invoke<Shared | null>("open_link", { text }),
+  /** The desktop: saves a JPEG the page drew (a lyrics card) to `path`. */
+  imageSave: (path: string, jpeg: Uint8Array) => invoke<void>("image_save", { path, jpeg: Array.from(jpeg) }),
   /** Songs like `seeds` (YouTube track ids), leaving out the ids in `skip`. */
   recommendations: (seeds: string[], skip: string[]) => invoke<Track[]>("recommendations", { seeds, skip }),
   playlists: () => invoke<PlaylistInfo[]>("playlists_list"),
@@ -286,6 +292,8 @@ export const api = {
   playlistDelete: (id: number) => invoke<void>("playlist_delete", { id }),
   /** Phones: picks a photo as the playlist's cover; false when none was picked. */
   playlistCoverPick: (id: number) => invoke<boolean>("playlist_cover_pick", { id }),
+  /** The desktop: a JPEG the page cut square from a chosen photo, as the playlist's cover. */
+  playlistCoverSet: (id: number, jpeg: Uint8Array) => invoke<void>("playlist_cover_set", { id, jpeg: Array.from(jpeg) }),
   playlistCoverClear: (id: number) => invoke<void>("playlist_cover_clear", { id }),
   /** Returns how many songs were new to the playlist. */
   playlistAdd: (id: number, tracks: Track[]) => invoke<number>("playlist_add", { id, tracks }),
