@@ -33,6 +33,21 @@ pub enum Shared {
     YoutubePlaylist { id: String },
 }
 
+/// A link that opened the app: what it opens, and whether only to show it
+/// (`quiet=1`, from a new release notification) rather than play it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Opened {
+    #[serde(flatten)]
+    pub item: Shared,
+    pub quiet: bool,
+}
+
+/// Whether a link asks to open its page without playing.
+pub fn quiet(link: &str) -> bool {
+    Url::parse(link).is_ok_and(|u| u.query_pairs().any(|(k, v)| k == "quiet" && v == "1"))
+}
+
 impl Shared {
     pub fn valid(&self) -> bool {
         match self {

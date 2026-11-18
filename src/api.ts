@@ -276,7 +276,7 @@ export const api = {
   /** Phones: shares a JPEG the page drew (a lyrics card) through Android's share sheet. */
   shareImage: (jpeg: Uint8Array) => invoke<void>("share_image", { jpeg: Array.from(jpeg) }),
   /** Phones: what the link that opened the app shares, once. */
-  sharedLink: () => invoke<Shared | null>("shared_link"),
+  sharedLink: () => invoke<(Shared & { quiet: boolean }) | null>("shared_link"),
   /** The link to `item`; the desktop copies it. */
   shareLink: (item: Shared) => invoke<string>("share_link", { item }),
   /** What a Cadence, YouTube or YouTube Music link pasted into Search opens; null for other text. */
@@ -303,6 +303,15 @@ export const api = {
   /** `settings` is the page's settings as JSON. */
   backupCreate: (path: string, settings: string) => invoke<BackupSummary>("backup_create", { path, settings }),
   backupPeek: (path: string) => invoke<BackupSummary>("backup_peek", { path }),
+  /** Saves a backup named `name` in Downloads (phones) or Documents (desktop) →
+   *  Cadence backups; `auto` keeps only the newest few automatic ones. Returns the folder. */
+  backupToFolder: (settings: string, name: string, auto: boolean) => invoke<string>("backup_to_folder", { settings, name, auto }),
+  /** Phones: lets the user pick a backup file; its path for backupPeek and backupRestore, or null. */
+  backupPick: () => invoke<string | null>("backup_pick"),
+  /** Phones: who to check for new releases in the background (JSON), or with `on` false, stop. */
+  releasesWatch: (json: string, on: boolean) => invoke<void>("releases_watch", { json, on }),
+  /** Phones: whether Cadence may notify; Android 13 and newer ask the first time. */
+  notificationsAllow: () => invoke<boolean>("notifications_allow"),
   backupRestore: (path: string, currentSettings: string) =>
     invoke<{ summary: BackupSummary; settings: string; safetyCopy: string }>("backup_restore", { path, currentSettings }),
 };

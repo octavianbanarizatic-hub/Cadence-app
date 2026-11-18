@@ -97,6 +97,10 @@ export class Player extends EventTarget {
    * in Spotify's Autoplay. The page turns it on; desktops leave it off.
    */
   autoplay = false;
+
+  /** Songs the user asked never to hear ("Don't play this song"): Autoplay and
+   *  smart shuffle leave them out. The page keeps it up to date. */
+  hidden = new Set<string>();
   /** Songs Autoplay added; the queue shows them under their own heading. */
   private autoplayed = new WeakSet<Track>();
   /** Smart shuffle's suggestions, and more like the list waiting their turn. */
@@ -423,7 +427,7 @@ export class Player extends EventTarget {
     this.filling = true;
     const gen = this.listGen;
     try {
-      const more = (await api.recommendations([seed.id], this.queue.map((t) => t.id))).slice(0, 25);
+      const more = (await api.recommendations([seed.id], [...this.queue.map((t) => t.id), ...this.hidden])).slice(0, 25);
       if (gen !== this.listGen || !more.length) return false;
       more.forEach((t) => this.autoplayed.add(t));
       this.queue.push(...more);
@@ -574,7 +578,7 @@ export class Player extends EventTarget {
       if (this.suggestions.length < slots().length) {
         const list = (this.unshuffled ?? this.queue).filter((t) => t.id.startsWith("yt:") && !this.suggested.has(t) && !this.autoplayed.has(t));
         if (!list.length) return;
-        const more = await api.recommendations(shuffled(list).slice(0, 5).map((t) => t.id), this.queue.map((t) => t.id));
+        const more = await api.recommendations(shuffled(list).slice(0, 5).map((t) => t.id), [...this.queue.map((t) => t.id), ...this.hidden]);
         if (gen !== this.listGen || !this.smart) return;
         const known = new Set([...this.queue, ...this.suggestions].map((t) => t.id));
         this.suggestions.push(...shuffled(more.filter((t) => !known.has(t.id))));

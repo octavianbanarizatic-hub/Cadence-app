@@ -522,7 +522,7 @@ pub fn unmetered_network(app: AppHandle) -> CmdResult<bool> {
 /// once: a Cadence link, or a YouTube or YouTube Music one. Anything else
 /// shared to Cadence is an error the page shows.
 #[tauri::command]
-pub fn shared_link(app: AppHandle) -> CmdResult<Option<share::Shared>> {
+pub fn shared_link(app: AppHandle) -> CmdResult<Option<share::Opened>> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_cadence_android::CadenceAndroidExt;
@@ -531,7 +531,7 @@ pub fn shared_link(app: AppHandle) -> CmdResult<Option<share::Shared>> {
         };
         share::parse(&link)
             .or_else(|| share::parse_youtube(&link))
-            .map(Some)
+            .map(|item| Some(share::Opened { item, quiet: share::quiet(&link) }))
             .ok_or_else(|| "Cadence opens YouTube, YouTube Music and Cadence links. That one isn't one of them.".into())
     }
     #[cfg(desktop)]
@@ -714,6 +714,104 @@ pub async fn playlist_import(app: AppHandle, state: State<'_, AppState>, link: S
 #[tauri::command]
 pub async fn backup_create(state: State<'_, AppState>, path: String, settings: String) -> CmdResult<backup::Summary> {
     backup::create(&state.db.lock().unwrap(), std::path::Path::new(&path), &settings)
+}
+
+/// Automatic backups kept in the backups folder; older ones are deleted.
+const AUTO_BACKUPS_KEPT: u32 = 4;
+
+/// Saves a backup named `name` where people find it: on phones in Downloads
+/// → Cadence backups, on the desktop in Documents → Cadence backups. With
+/// `auto`, only the newest few automatic backups stay. Returns the folder.
+#[tauri::command]
+pub async fn backup_to_folder(app: AppHandle, state: State<'_, AppState>, settings: String, name: String, auto: bool) -> CmdResult<String> {
+    let plain = name.ends_with(".cadence-backup") && name.chars().all(|c| c.is_ascii_alphanumeric() || " ._-".contains(c));
+    if !plain {
+        return Err("bad backup name".into());
+    }
+    let keep = if auto { AUTO_BACKUPS_KEPT } else { 0 };
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        // Made in the cache first; Android copies it to Downloads.
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("backup");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let tmp = dir.join(&name);
+        backup::create(&state.db.lock().unwrap(), &tmp, &settings)?;
+        let path = tmp.to_string_lossy().into_owned();
+        let handle = app.clone();
+        let place = tauri::async_runtime::spawn_blocking(move || handle.cadence_android().save_backup(&path, &name, keep))
+            .await
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&tmp);
+        place
+    }
+    #[cfg(desktop)]
+    {
+        let dir = app.path().document_dir().map_err(|e| e.to_string())?.join("Cadence backups");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        backup::create(&state.db.lock().unwrap(), &dir.join(&name), &settings)?;
+        if keep > 0 {
+            backup::prune_auto(&dir, keep as usize);
+        }
+        Ok(dir.to_string_lossy().into_owned())
+    }
+}
+
+/// Phones: lets the user pick a backup file and copies it where Rust can read
+/// it, for `backup_peek` and `backup_restore`. None when they picked none.
+#[tauri::command]
+pub async fn backup_pick(app: AppHandle) -> CmdResult<Option<String>> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("backup");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join("picked.cadence-backup").to_string_lossy().into_owned();
+        let (handle, dest) = (app.clone(), path.clone());
+        let picked = tauri::async_runtime::spawn_blocking(move || handle.cadence_android().pick_backup(&dest))
+            .await
+            .map_err(|e| e.to_string())??;
+        Ok(picked.then_some(path))
+    }
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        Err("Backups are picked in the file dialog on the desktop.".into())
+    }
+}
+
+/// Phones: who to check for new releases in the background (the page's JSON:
+/// followed artists and podcasts), or with `on` false, stop checking.
+#[tauri::command]
+pub fn releases_watch(app: AppHandle, json: String, on: bool) -> CmdResult<()> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        app.cadence_android().watch_releases(&json, on)
+    }
+    #[cfg(desktop)]
+    {
+        let _ = (app, json, on);
+        Ok(())
+    }
+}
+
+/// Phones: whether Cadence may show notifications; Android 13 and newer ask
+/// the first time. The desktop has no release notifications.
+#[tauri::command]
+pub async fn notifications_allow(app: AppHandle) -> CmdResult<bool> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        tauri::async_runtime::spawn_blocking(move || app.cadence_android().allow_notifications())
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        Ok(false)
+    }
 }
 
 /// What a backup file holds, shown before restoring it.

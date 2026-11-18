@@ -3678,6 +3678,55 @@
   color: var(--text-2);
 }
 
+/* Profile's "Your 2026 in music", and its card in the dialog. */
+:is(.phone, .desktop) .year-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px 14px 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 160% at 100% 0, oklch(0.63 0.22 25 / 0.22), transparent 60%),
+    var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+:is(.phone, .desktop) .year-btn > .icon:first-child {
+  color: var(--red);
+}
+
+:is(.phone, .desktop) .year-btn span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+:is(.phone, .desktop) .year-btn b {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+:is(.phone, .desktop) .year-btn small {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+:is(.phone, .desktop) .year-card {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 58vh;
+  margin: 14px auto 0;
+  border-radius: 14px;
+}
+
 /* ---- podcasts ---------------------------------------------------------------- */
 
 :is(.phone, .desktop) .pod-follow {

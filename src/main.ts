@@ -505,6 +505,7 @@ function openMenu(e: MouseEvent, track: Track, extra: MenuItem[] = []) {
   if (track.id.startsWith("yt:")) {
     const id = track.id.slice(3);
     items.push({ label: "Start radio", icon: "radio", run: () => void startRadio([track], `${track.title} radio`, track) });
+    items.push(hideItem(track));
     items.push({ label: "Share", icon: "share", run: () => void share({ kind: "song", id, title: track.title, artist: track.artist }) });
   }
   const toArtist = artistTarget(track);
@@ -1629,7 +1630,7 @@ async function loadRecommendations() {
   recs.basis = [...new Set(seeds.map((t) => t.artist.split(",")[0].trim()).filter(Boolean))];
   renderRecs();
   try {
-    recs.tracks = seeds.length ? await api.recommendations(seeds.map((t) => t.id), [...own.keys()]) : [];
+    recs.tracks = seeds.length ? await api.recommendations(seeds.map((t) => t.id), [...own.keys(), ...player.hidden]) : [];
     recs.state = "ready";
   } catch (e) {
     recs.state = "error";
@@ -2707,9 +2708,22 @@ function renderSettings() {
     </div>
     <p class="setting-note">Songs play from where they are, and changes in the folders show up by themselves.</p>`
     }
+    ${
+      phone
+        ? `<h2 class="section-label">Notifications</h2>
+    <div class="box">
+      ${toggle("release-alerts", "bell", "New releases", "When artists and podcasts you follow put out something new", settings.get("releaseAlerts", true))}
+    </div>`
+        : ""
+    }
+    <h2 class="section-label">Hidden songs</h2>
+    <div class="box">
+      ${row("hidden-songs", "hide", "Songs you don't want to hear", hiddenSongs.length ? count(hiddenSongs.length, "song") : "None yet · ⋮ on a song → Don't play this song")}
+    </div>
     <h2 class="section-label">Backup</h2>
     <div class="box">
-      ${row("backup", "upload", "Back up…", "Save playlists and likes to a file")}
+      ${toggle("auto-backup", "restore", "Back up automatically", autoBackupNote(), settings.get("autoBackup", true))}
+      ${row("backup", "upload", "Back up now", phone ? "Save playlists, likes and stats in Downloads" : "Save playlists and likes to a file")}
       ${row("restore", "restore", "Restore from a backup…", "Load playlists and likes from a file")}
     </div>
     <h2 class="section-label">App</h2>
@@ -2762,6 +2776,28 @@ function renderSettings() {
     $("#open-music").onclick = openMusic;
   }
   if (phone) $("#open-downloads").onclick = openDownloads;
+  bindToggle("auto-backup", () => {
+    const on = !settings.get("autoBackup", true);
+    settings.set("autoBackup", on);
+    if (on) void autoBackup();
+    return on;
+  });
+  if (phone) {
+    bindToggle("release-alerts", () => {
+      const on = !settings.get("releaseAlerts", true);
+      settings.set("releaseAlerts", on);
+      watchReleases();
+      if (on) void api.notificationsAllow().then((ok) => ok || toast("Turn on notifications for Cadence in Android's settings"), () => {});
+      return on;
+    });
+  }
+  $("#hidden-songs").onclick = (e) => {
+    if (!hiddenSongs.length) return toast("No hidden songs. Tap ⋮ on a song and pick Don't play this song");
+    menuUnder(
+      e,
+      hiddenSongs.map((t): MenuItem => ({ label: `${t.title} · ${t.artist}`, icon: "restore", sub: "Tap to hear it again", run: () => unhideSong(t) })),
+    );
+  };
   $("#backup").onclick = () => void backUp();
   $("#restore").onclick = () => void restoreBackup();
   const update = $<HTMLButtonElement>("#ytdlp-update");
@@ -2913,8 +2949,10 @@ function renderProfile() {
       <i class="period-pill"></i>
       ${PERIODS.map((p) => `<button role="tab" data-period="${p.id}" aria-selected="${p.id === period}">${p.name}</button>`).join("")}
     </div>
+    <button class="year-btn" id="year-btn">${icon("year", 22)}<span><b>Your ${new Date().getFullYear()} in music</b><small>A card to share, with your top artist and songs</small></span>${icon("chevronRight", 20)}</button>
     <div id="stats"></div>`;
   $("#open-settings").onclick = openSettings;
+  $("#year-btn").onclick = () => void showYear();
   const bar = $("#period");
   const pick = (id: Period) => {
     bar.style.setProperty("--i", String(PERIODS.findIndex((p) => p.id === id)));
@@ -2929,6 +2967,116 @@ function renderProfile() {
   };
   pick(period);
   void loadStats(period);
+}
+
+// ---- your year in music -------------------------------------------------------------
+
+/** Profile's "Your 2026 in music": the year so far on a story-sized card
+ *  (1080×1920), drawn like the lyrics cards, to share as a picture. */
+async function showYear() {
+  const year = new Date().getFullYear();
+  const since = Math.floor(new Date(year, 0, 1).getTime() / 1000);
+  const s = await api.listeningStats(since).catch((e) => (toast(String(e), "error"), null));
+  if (!s) return;
+  if (!s.plays) return toast(`Nothing played in ${year} yet`);
+  let card: HTMLCanvasElement;
+  try {
+    card = await drawYear(s, year);
+  } catch (e) {
+    return toast(String(e), "error");
+  }
+  const blob = await new Promise<Blob | null>((done) => card.toBlob(done, "image/jpeg", 0.92));
+  if (!blob) return toast("Couldn't make the picture", "error");
+  const jpeg = new Uint8Array(await blob.arrayBuffer());
+  await openDialog({
+    title: `Your ${year} in music`,
+    // A data link: the app's content rules let pictures come from those, not from blobs.
+    body: `<img class="year-card" src="${card.toDataURL("image/jpeg", 0.85)}" alt="" />`,
+    ok: phone ? "Share" : "Save picture",
+    cancel: "Close",
+    onSubmit: async () => {
+      await sharePicture(jpeg, `Cadence ${year} in music`);
+      return true;
+    },
+  });
+}
+
+/** The year card: minutes listened, the top artist with their photo, and the
+ *  top five songs, on the top song's color fading into near-black. */
+async function drawYear(s: ListeningStats, year: number): Promise<HTMLCanvasElement> {
+  await Promise.all(['800 80px "Bricolage Grotesque"', '700 40px "Bricolage Grotesque"', '500 30px "DM Mono"'].map((f) => document.fonts.load(f)));
+  const W = 1080;
+  const H = 1920;
+  const pad = 88;
+  const canvas = Object.assign(document.createElement("canvas"), { width: W, height: H });
+  const ctx = canvas.getContext("2d")!;
+  const top = s.tracks[0]?.track;
+  const cover = top ? artUrl(top) : null;
+  const [r, g, b] = (cover && (await artColor(cover))) || [190, 60, 70];
+  const bg = ctx.createLinearGradient(0, 0, W * 0.5, H);
+  bg.addColorStop(0, `rgb(${r * 0.62}, ${g * 0.62}, ${b * 0.62})`);
+  bg.addColorStop(0.55, "#0b0d14");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  // Red glows from the bottom corner, as the minutes card on Profile does.
+  const glow = ctx.createRadialGradient(W, H, 0, W, H, W);
+  glow.addColorStop(0, "rgba(229, 52, 60, 0.35)");
+  glow.addColorStop(1, "rgba(229, 52, 60, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = "top";
+  const text = (t: string, font: string, color: string, x: number, y: number, width = W - pad - x) => {
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.fillText(fit(ctx, t, width), x, y);
+  };
+  const dim = "rgba(238, 240, 246, 0.72)";
+  ctx.drawImage(markCanvas(64), pad, 92);
+  text("cadence", '800 46px "Bricolage Grotesque"', "#eef0f6", pad + 80, 100);
+  text("YOUR YEAR IN MUSIC", '500 32px "DM Mono"', dim, pad, 236);
+  text(String(year), '800 230px "Bricolage Grotesque"', "#ffffff", pad - 8, 270);
+  text(Math.round(s.seconds / 60).toLocaleString(), '800 150px "Bricolage Grotesque"', "#ffffff", pad, 540);
+  text(`MINUTES LISTENED · ${count(s.plays, "play").toUpperCase()}`, '500 30px "DM Mono"', dim, pad, 700);
+  // The top artist, round, beside their name.
+  const artist = s.artists[0];
+  if (artist) {
+    const photoUrl = imgUrl((artist.id && artistPhotos.get(artist.id)) || artist.thumbnail);
+    const photo = photoUrl ? await loadImage(photoUrl) : null;
+    const size = 240;
+    const y = 800;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pad + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = "#1c1f2b";
+    ctx.fill();
+    ctx.clip();
+    if (photo) ctx.drawImage(photo, pad, y, size, size);
+    ctx.restore();
+    const x = pad + size + 40;
+    text("TOP ARTIST", '500 30px "DM Mono"', "rgba(240, 120, 125, 1)", x, y + 46);
+    text(artist.name, '800 72px "Bricolage Grotesque"', "#ffffff", x, y + 88);
+    text(count(artist.plays, "play"), '500 30px "DM Mono"', dim, x, y + 176);
+  }
+  // The top five songs, each with its cover.
+  text("TOP SONGS", '500 30px "DM Mono"', "rgba(240, 120, 125, 1)", pad, 1120);
+  const rows = s.tracks.slice(0, 5);
+  for (const [i, row] of rows.entries()) {
+    const y = 1180 + i * 130;
+    text(String(i + 1), '500 40px "DM Mono"', i ? dim : "rgba(240, 120, 125, 1)", pad, y + 30);
+    const url = artUrl(row.track);
+    const art = url ? await loadImage(url) : null;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(pad + 64, y, 104, 104, 14);
+    ctx.fillStyle = "#1c1f2b";
+    ctx.fill();
+    ctx.clip();
+    if (art) ctx.drawImage(art, pad + 64, y, 104, 104);
+    ctx.restore();
+    text(row.track.title, '700 44px "Bricolage Grotesque"', "#ffffff", pad + 196, y + 10);
+    text(row.track.artist.toUpperCase(), '500 28px "DM Mono"', dim, pad + 196, y + 64);
+  }
+  return canvas;
 }
 
 let statsToken = 0;
@@ -3190,9 +3338,9 @@ async function makeMixes(): Promise<Mix[]> {
   const used = new Set<string>();
   const out: Mix[] = [];
   for (const artist of artists.slice(0, 4)) {
-    const own = shuffled(songs.get(artist)!).filter((t) => !used.has(t.id)).slice(0, 8);
+    const own = shuffled(songs.get(artist)!).filter((t) => !used.has(t.id) && !player.hidden.has(t.id)).slice(0, 8);
     if (!own.length) continue;
-    const radio = await api.recommendations(own.slice(0, 3).map((t) => t.id), [...used, ...own.map((t) => t.id)]).catch(() => [] as Track[]);
+    const radio = await api.recommendations(own.slice(0, 3).map((t) => t.id), [...used, ...own.map((t) => t.id), ...player.hidden]).catch(() => [] as Track[]);
     if (radio.length < 10) continue;
     // One of your songs, then two new ones, and so on.
     const tracks: Track[] = [];
@@ -3228,7 +3376,7 @@ async function startRadio(seeds: Track[], name: string, first?: Track) {
     setNowPlayingOpen(true);
   } else toast("Starting radio…");
   try {
-    const songs = await api.recommendations(ids, first ? [first.id] : []);
+    const songs = await api.recommendations(ids, [...(first ? [first.id] : []), ...player.hidden]);
     if (!songs.length) return toast("No radio for this one yet", "error");
     if (!first) player.playList(songs, 0, name);
     else if (player.current?.id === first.id) player.setUpcoming(songs);
@@ -3426,6 +3574,7 @@ function setFollow(artist: ArtistRef, on: boolean) {
   if (on) following.unshift(artist);
   settings.set("following", following);
   renderPlaylistGrid();
+  watchReleases();
 }
 
 /**
@@ -3472,6 +3621,27 @@ let followedShows: Show[] = [];
 async function refreshFollowedShows() {
   followedShows = await api.podcastsFollowed().catch(() => followedShows);
   renderPlaylistGrid();
+  watchReleases();
+}
+
+/**
+ * Phones: hands Android the artists and podcasts you follow, so it can check
+ * for new releases twice a day and notify, with Cadence closed too
+ * (Releases.kt). The first time there's someone to watch, Android 13 and
+ * newer ask whether Cadence may notify.
+ */
+function watchReleases() {
+  if (!phone) return;
+  const on = settings.get("releaseAlerts", true) && (following.length > 0 || followedShows.length > 0);
+  const json = JSON.stringify({
+    artists: following.map((a) => ({ id: a.id, name: a.name })),
+    shows: followedShows.map((s) => ({ id: s.id, title: s.title, feed: s.feed })),
+  });
+  void api.releasesWatch(json, on).catch(() => {});
+  if (on && !settings.get("askedNotifications", false)) {
+    settings.set("askedNotifications", true);
+    void api.notificationsAllow().catch(() => false);
+  }
 }
 
 function bindShowFollow(show: Show, followed: boolean) {
@@ -3707,11 +3877,12 @@ function shareTracks(name: string, tracks: Track[]) {
  *  to it), and starts playing it. An artist's page just opens. */
 async function openSharedLink() {
   const item = await api.sharedLink().catch((e) => (toast(String(e), "error"), null));
-  if (item) await openShared(item);
+  if (item) await openShared(item, item.quiet);
 }
 
-/** Opens a shared item (on the desktop, a link pasted into Search) and plays it. */
-async function openShared(item: Shared) {
+/** Opens a shared item (on the desktop, a link pasted into Search) and plays
+ *  it; `quiet` (a new release notification) only opens its page. */
+async function openShared(item: Shared, quiet = false) {
   $("#menu").hidden = true;
   setSidePanel(null);
   if (item.kind === "song") {
@@ -3728,7 +3899,7 @@ async function openShared(item: Shared) {
       : item.kind === "youtubePlaylist"
         ? { kind: "ytlist", id: item.id }
         : { kind: "shared", name: item.name, ids: item.ids };
-  playOnOpen = p;
+  playOnOpen = quiet ? null : p;
   openPage(p);
 }
 
@@ -3978,6 +4149,16 @@ function backupContents(s: BackupSummary): string {
 }
 
 async function backUp() {
+  // Phones save it in Downloads → Cadence backups, where the file picker finds it again.
+  if (phone) {
+    try {
+      await api.backupToFolder(settings.exportAll(), `Cadence backup ${stamp(true)}.cadence-backup`, false);
+      toast("Backup saved in Downloads → Cadence backups");
+    } catch (e) {
+      toast(`Backup failed: ${e}`, "error");
+    }
+    return;
+  }
   const name = `Cadence backup ${new Date().toISOString().slice(0, 10)}.cadence-backup`;
   const path = await save({ title: "Save a backup", defaultPath: await join(await documentDir(), name), filters: BACKUP_FILTER });
   if (!path) return;
@@ -3990,7 +4171,10 @@ async function backUp() {
 }
 
 async function restoreBackup() {
-  const path = await open({ title: "Restore a backup", multiple: false, directory: false, defaultPath: await documentDir(), filters: BACKUP_FILTER });
+  // Android's file picker hands out links Rust can't read; the plugin copies the file picked.
+  const path = phone
+    ? await api.backupPick().catch((e) => (toast(String(e), "error"), null))
+    : await open({ title: "Restore a backup", multiple: false, directory: false, defaultPath: await documentDir(), filters: BACKUP_FILTER });
   if (typeof path !== "string") return;
   let s: BackupSummary;
   try {
@@ -4001,7 +4185,7 @@ async function restoreBackup() {
   const when = new Date(s.createdAt * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   const ok = await confirmBox({
     title: "Restore this backup?",
-    body: `It's from ${esc(when)} and has ${backupContents(s)}.</p><p>It replaces your current playlists, liked songs, library list and settings. What you have now is saved first, so you can go back to it. Downloaded songs that aren't on this PC need downloading again.`,
+    body: `It's from ${esc(when)} and has ${backupContents(s)}.</p><p>It replaces your current playlists, liked songs, library list and settings. What you have now is saved first, so you can go back to it. Downloaded songs that aren't on this ${phone ? "phone" : "PC"} need downloading again.`,
     ok: "Restore",
     danger: true,
   });
@@ -4016,6 +4200,81 @@ async function restoreBackup() {
   } catch (e) {
     toast(String(e), "error");
   }
+}
+
+/** Automatic backups: one a week, made when the app opens or comes back. */
+const BACKUP_EVERY = 7 * 86400_000;
+
+/** Today's date (and with `time`, the time) as it goes in backup names. */
+function stamp(time = false): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return time ? `${day} ${p(d.getHours())}-${p(d.getMinutes())}` : day;
+}
+
+/** Makes this week's backup in Downloads (phones) or Documents (desktop) →
+ *  Cadence backups, keeping the last four (backup_to_folder). Quiet: a
+ *  failed one is tried again next time. */
+async function autoBackup() {
+  if (!settings.get("autoBackup", true) || Date.now() - settings.get("lastAutoBackup", 0) < BACKUP_EVERY) return;
+  try {
+    await api.backupToFolder(settings.exportAll(), `Cadence auto backup ${stamp()}.cadence-backup`, true);
+    settings.set("lastAutoBackup", Date.now());
+    const note = document.querySelector("#auto-backup small");
+    if (note) note.textContent = autoBackupNote();
+  } catch {
+    // Tried again next time.
+  }
+}
+
+function autoBackupNote(): string {
+  const last = settings.get("lastAutoBackup", 0);
+  const where = phone ? "Downloads → Cadence backups" : "Documents → Cadence backups";
+  const when = last ? ` · last on ${new Date(last).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : "";
+  return `Every week, in ${where}; the last 4 are kept${when}`;
+}
+
+// ---- songs you don't want to hear ---------------------------------------------------
+
+/** "Don't play this song": radio, mixes, recommendations, Autoplay and smart
+ *  shuffle leave these out. Kept in the settings, so backups have them. */
+let hiddenSongs = settings.get<Track[]>("hiddenSongs", []);
+hiddenSongs.forEach((t) => player.hidden.add(t.id));
+
+function setHiddenSongs(list: Track[]) {
+  hiddenSongs = list;
+  settings.set("hiddenSongs", list);
+  player.hidden.clear();
+  list.forEach((t) => player.hidden.add(t.id));
+  const note = document.querySelector("#hidden-songs small");
+  if (note) note.textContent = list.length ? count(list.length, "song") : "None yet · ⋮ on a song → Don't play this song";
+}
+
+function hideItem(track: Track): MenuItem {
+  const on = player.hidden.has(track.id);
+  return on
+    ? { label: "Allow this song again", icon: "restore", run: () => unhideSong(track) }
+    : { label: "Don't play this song", icon: "hide", sub: "Radio, mixes and suggestions leave it out", run: () => hideSong(track) };
+}
+
+function hideSong(track: Track) {
+  setHiddenSongs([{ ...track, artists: undefined }, ...hiddenSongs.filter((t) => t.id !== track.id)]);
+  // Gone from what's coming up too, if Cadence picked it; the songs you chose stay.
+  for (let i = player.queue.length - 1; i > player.index; i--) {
+    if (player.queue[i].id === track.id && (player.isAutoplayed(i) || player.isSuggested(i))) player.removeAt(i);
+  }
+  if (recs.tracks.some((t) => t.id === track.id)) {
+    recs.tracks = recs.tracks.filter((t) => t.id !== track.id);
+    renderRecs();
+  }
+  if (player.current?.id === track.id) player.next();
+  toast("You won't hear this song in radio, mixes or suggestions", "info", { label: "Undo", run: () => unhideSong(track, false) });
+}
+
+function unhideSong(track: Track, say = true) {
+  setHiddenSongs(hiddenSongs.filter((t) => t.id !== track.id));
+  if (say) toast(`“${track.title}” can play again`);
 }
 
 // ---- dialogs ----------------------------------------------------------------------
@@ -4652,20 +4911,25 @@ async function shareLyrics(track: Track, lines: string[]) {
     ctx.fillText("cadence", pad + 76, H - 121);
     const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/jpeg", 0.92));
     if (!blob) throw new Error("Couldn't make the picture");
-    const jpeg = new Uint8Array(await blob.arrayBuffer());
-    if (phone) return await api.shareImage(jpeg);
-    const name = `${track.title} lyrics`.replace(/[\\/:*?"<>|]/g, "").trim() || "Lyrics";
-    const path = await save({
-      title: "Save the lyrics card",
-      defaultPath: await join(await pictureDir().catch(() => documentDir()), `${name}.jpg`),
-      filters: [{ name: "JPEG picture", extensions: ["jpg"] }],
-    });
-    if (!path) return;
-    await api.imageSave(path, jpeg);
-    toast("Lyrics card saved");
+    await sharePicture(new Uint8Array(await blob.arrayBuffer()), `${track.title} lyrics`);
   } catch (e) {
     toast(String(e), "error");
   }
+}
+
+/** Shares a JPEG the page drew through Android's share sheet; the desktop
+ *  saves it where the user picks, named `name`. */
+async function sharePicture(jpeg: Uint8Array, name: string) {
+  if (phone) return await api.shareImage(jpeg);
+  const file = name.replace(/[\\/:*?"<>|]/g, "").trim() || "Cadence";
+  const path = await save({
+    title: "Save the picture",
+    defaultPath: await join(await pictureDir().catch(() => documentDir()), `${file}.jpg`),
+    filters: [{ name: "JPEG picture", extensions: ["jpg"] }],
+  });
+  if (!path) return;
+  await api.imageSave(path, jpeg);
+  toast("Picture saved");
 }
 
 /** Cadence's mark drawn `size` px wide; its gaps are cut out, so it sits on any background. */
@@ -5263,10 +5527,13 @@ async function boot() {
 
   void autoDownload();
   window.addEventListener("online", () => void autoDownload());
+  // After the app has settled; a backup takes a moment.
+  setTimeout(() => void autoBackup(), 8000);
   void checkAppUpdate(true);
   if (phone) {
     (navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener("change", () => void autoDownload());
     onAway((away) => !away && void autoDownload());
+    onAway((away) => !away && void autoBackup());
     // Back from allowing installs from Cadence: carry on with the update.
     onAway((away) => {
       if (away || !installPending) return;

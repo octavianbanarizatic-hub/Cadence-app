@@ -114,6 +114,29 @@ struct CopyArgs<'a> {
     path: &'a str,
 }
 
+#[derive(Serialize)]
+struct BackupArgs<'a> {
+    path: &'a str,
+    name: &'a str,
+    keep: u32,
+}
+
+#[derive(Deserialize)]
+struct Place {
+    place: String,
+}
+
+#[derive(Serialize)]
+struct WatchArgs<'a> {
+    json: &'a str,
+    on: bool,
+}
+
+#[derive(Deserialize)]
+struct Allowed {
+    allowed: bool,
+}
+
 /// These calls block until yt-dlp finishes; run them off the async runtime.
 impl<R: Runtime> CadenceAndroid<R> {
     /// Runs yt-dlp; with `worker` (Cadence's worker script), in the Python kept running for it.
@@ -193,6 +216,42 @@ impl<R: Runtime> CadenceAndroid<R> {
         self.0
             .run_mobile_plugin::<serde::de::IgnoredAny>("shareImage", PathArgs { path })
             .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Saves the backup file at `path` in Downloads → Cadence backups as
+    /// `name`; with `keep` above 0, only the newest `keep` automatic ones stay.
+    /// Returns where it went, for the page to say.
+    pub fn save_backup(&self, path: &str, name: &str, keep: u32) -> Result<String, String> {
+        self.0
+            .run_mobile_plugin::<Place>("saveBackup", BackupArgs { path, name, keep })
+            .map(|p| p.place)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Opens Android's file picker for a backup and copies it to `path`.
+    /// Waits for the user; false when they cancel.
+    pub fn pick_backup(&self, path: &str) -> Result<bool, String> {
+        self.0
+            .run_mobile_plugin::<Saved>("pickBackup", PathArgs { path })
+            .map(|s| s.saved)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Who to check for new releases in the background (the page's JSON), or
+    /// with `on` false, stops the checks.
+    pub fn watch_releases(&self, json: &str, on: bool) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("watchReleases", WatchArgs { json, on })
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Whether Cadence may notify; asks the first time on Android 13 and newer.
+    pub fn allow_notifications(&self) -> Result<bool, String> {
+        self.0
+            .run_mobile_plugin::<Allowed>("allowNotifications", ())
+            .map(|a| a.allowed)
             .map_err(|e| e.to_string())
     }
 

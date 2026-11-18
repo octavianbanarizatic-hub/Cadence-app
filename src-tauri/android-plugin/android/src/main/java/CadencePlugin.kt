@@ -1,5 +1,6 @@
 package dev.cadence.android
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -13,10 +14,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
+import app.tauri.PermissionState
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
@@ -57,7 +62,21 @@ class CopyArgs {
     lateinit var path: String
 }
 
-@TauriPlugin
+@InvokeArg
+class BackupArgs {
+    lateinit var path: String
+    lateinit var name: String
+    /** Automatic backups kept; 0 for one made by hand, which is never deleted. */
+    var keep: Int = 0
+}
+
+@InvokeArg
+class WatchArgs {
+    lateinit var json: String
+    var on: Boolean = false
+}
+
+@TauriPlugin(permissions = [Permission(strings = [Manifest.permission.POST_NOTIFICATIONS], alias = "notifications")])
 class CadencePlugin(private val activity: Activity) : Plugin(activity) {
     // yt-dlp runs take seconds; commands arrive on the main thread.
     private val worker = Executors.newCachedThreadPool()
@@ -352,6 +371,53 @@ class CadencePlugin(private val activity: Activity) : Plugin(activity) {
             if (uri != null) Pictures.saveCover(activity.contentResolver, uri, path)
             JSObject().put("saved", uri != null)
         }
+    }
+
+    /** Saves the backup file at `path` in Downloads → Cadence backups (Backups). */
+    @Command
+    fun saveBackup(invoke: Invoke) {
+        val args = invoke.parseArgs(BackupArgs::class.java)
+        background(invoke) { JSObject().put("place", Backups.save(activity, args.path, args.name, args.keep)) }
+    }
+
+    /** Opens Android's file picker for a backup and copies the one picked to `path`. */
+    @Command
+    fun pickBackup(invoke: Invoke) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+        startActivityForResult(invoke, intent, "backupPicked")
+    }
+
+    @ActivityCallback
+    private fun backupPicked(invoke: Invoke, result: ActivityResult) {
+        val uri = result.data?.data.takeIf { result.resultCode == Activity.RESULT_OK }
+        val path = invoke.parseArgs(InstallArgs::class.java).path
+        background(invoke) {
+            if (uri != null) MusicFiles.copy(activity.contentResolver, uri.toString(), path)
+            JSObject().put("saved", uri != null)
+        }
+    }
+
+    /** Who to watch for new releases, and whether to (Releases). */
+    @Command
+    fun watchReleases(invoke: Invoke) {
+        val args = invoke.parseArgs(WatchArgs::class.java)
+        Releases.watch(activity.applicationContext, args.json, args.on)
+        invoke.resolve()
+    }
+
+    /** Whether Cadence may show notifications; Android 13 and newer ask the first time. */
+    @Command
+    fun allowNotifications(invoke: Invoke) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", invoke, "notificationsAnswered")
+        } else {
+            notificationsAnswered(invoke)
+        }
+    }
+
+    @PermissionCallback
+    private fun notificationsAnswered(invoke: Invoke) {
+        invoke.resolve(JSObject().put("allowed", NotificationManagerCompat.from(activity).areNotificationsEnabled()))
     }
 
     /** Copies one picked file to `path`, in Cadence's own storage. */

@@ -180,10 +180,46 @@ fn prune(dir: &Path) {
     }
 }
 
+/// The desktop's backups folder: keeps only the newest \`keep\` automatic
+/// backups. Their names end in the date, so they sort oldest first. Backups
+/// made by hand are never deleted. (Phones do this in Kotlin, Backups.kt.)
+#[cfg_attr(not(desktop), allow(dead_code))]
+pub fn prune_auto(dir: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut autos: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("Cadence auto backup ")))
+        .collect();
+    autos.sort();
+    let excess = autos.len().saturating_sub(keep);
+    for old in autos.into_iter().take(excess) {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{db, Track};
+
+    #[test]
+    fn automatic_backups_keep_the_newest() {
+        let dir = temp_dir("auto");
+        std::fs::create_dir_all(&dir).unwrap();
+        for day in ["2026-11-01", "2026-11-08", "2026-11-15", "2026-11-22", "2026-11-29"] {
+            std::fs::write(dir.join(format!("Cadence auto backup {day}.cadence-backup")), "x").unwrap();
+        }
+        std::fs::write(dir.join("Cadence backup 2026-10-01.cadence-backup"), "x").unwrap();
+        prune_auto(&dir, 4);
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left.len(), 5);
+        // The oldest automatic one went; the one made by hand stayed.
+        assert!(!left.iter().any(|n| n.contains("2026-11-01")));
+        assert!(left.iter().any(|n| n == "Cadence backup 2026-10-01.cadence-backup"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cadence-backup-{name}-{}", std::process::id()));
