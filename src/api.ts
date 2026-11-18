@@ -253,10 +253,11 @@ export const api = {
   listeningStats: (since: number) => invoke<ListeningStats>("listening_stats", { since }),
   /** Phones: the navigation bar's height in CSS pixels; the page draws behind it. */
   navBarHeight: () => invoke<number>("nav_bar_height"),
-  /** Phones: this version, and a newer one if it's out. */
+  /** This version, and a newer one if it's out (phones and Windows). */
   appUpdateCheck: () => invoke<{ current: string; update: AppUpdate | null }>("app_update_check"),
-  /** Phones: downloads the update and opens the installer. False when Android
-   *  first wants Cadence allowed to install apps (its settings screen opens). */
+  /** Downloads the update and opens the installer (on Windows, the setup
+   *  program, which restarts Cadence). False when Android first wants Cadence
+   *  allowed to install apps (its settings screen opens). */
   appUpdateInstall: () => invoke<boolean>("app_update_install"),
   /** Null when no lyrics were found. */
   lyrics: (track: Track) => invoke<Lyrics | null>("lyrics", { track }),

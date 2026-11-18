@@ -2750,7 +2750,7 @@ function renderSettings() {
   };
 }
 
-// ---- app updates (phones) -------------------------------------------------------------
+// ---- app updates -------------------------------------------------------------------
 
 /** This version and a newer one, once GitHub has been asked. */
 let appVersion: { current: string; update: AppUpdate | null } | null = null;
@@ -2790,13 +2790,17 @@ function releaseNotes(text: string): string {
     .replace(/\n/g, "<br>");
 }
 
-/** Downloads the update and opens Android's installer. True once the installer (or its permission screen) is up. */
+/** Downloads the update and opens Android's installer, or on Windows runs the
+ *  setup program, which closes Cadence and starts it again. True once the
+ *  installer (or Android's permission screen) is up. */
 async function installAppUpdate(status: (text: string) => void): Promise<boolean> {
   const stop = await listen<{ downloaded: number; total: number }>("update-progress", (e) => {
     const { downloaded, total } = e.payload;
     status((updating = total ? `Downloading… ${Math.floor((downloaded / total) * 100)}%` : `Downloading… ${formatBytes(downloaded)}`));
     renderAppBox();
   });
+  // Windows: the setup program is running and closes Cadence in a moment.
+  let installing = false;
   try {
     status((updating = "Downloading…"));
     renderAppBox();
@@ -2804,11 +2808,14 @@ async function installAppUpdate(status: (text: string) => void): Promise<boolean
     if (!opened) {
       installPending = true;
       toast("Allow Cadence to install updates, then come back");
+    } else if (!phone) {
+      installing = true;
+      toast("Installing the update · Cadence restarts by itself");
     }
     return true;
   } finally {
     stop();
-    updating = null;
+    updating = installing ? "Installing…" : null;
     renderAppBox();
   }
 }
@@ -5221,8 +5228,8 @@ async function boot() {
 
   void autoDownload();
   window.addEventListener("online", () => void autoDownload());
+  void checkAppUpdate(true);
   if (phone) {
-    void checkAppUpdate(true);
     (navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener("change", () => void autoDownload());
     onAway((away) => !away && void autoDownload());
     // Back from allowing installs from Cadence: carry on with the update.

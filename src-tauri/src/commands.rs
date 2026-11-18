@@ -331,19 +331,21 @@ pub fn nav_bar_height(app: AppHandle) -> CmdResult<f64> {
     }
 }
 
-/// Phones: whether a newer Cadence is out. The desktop never finds one.
+/// Whether a newer Cadence is out. Only phones and Windows have updates.
 #[tauri::command]
 pub async fn app_update_check(app: AppHandle, state: State<'_, AppState>) -> CmdResult<updater::Check> {
     let current = app.package_info().version.to_string();
-    if cfg!(desktop) {
+    if cfg!(all(desktop, not(windows))) {
         return Ok(updater::Check { current, update: None });
     }
     updater::check(&state.http, &current).await
 }
 
-/// Phones: downloads the newest version and opens Android's installer.
-/// Resolves to false when Android first wants permission to install apps
-/// from Cadence; its settings screen is open then.
+/// Downloads the newest version. Phones open Android's installer, and
+/// resolve to false when Android first wants permission to install apps
+/// from Cadence (its settings screen is open then). Windows runs the setup
+/// program in passive mode: it shows only its progress, closes Cadence,
+/// installs over it and starts it again (/R).
 #[tauri::command]
 pub async fn app_update_install(app: AppHandle, state: State<'_, AppState>) -> CmdResult<bool> {
     #[cfg(target_os = "android")]
@@ -360,10 +362,30 @@ pub async fn app_update_install(app: AppHandle, state: State<'_, AppState>) -> C
             .await
             .map_err(|e| e.to_string())?
     }
-    #[cfg(desktop)]
+    #[cfg(windows)]
+    {
+        let current = app.package_info().version.to_string();
+        let release = updater::check(&state.http, &current)
+            .await?
+            .update
+            .ok_or("Cadence is up to date.")?;
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("updates");
+        let setup = updater::download(&app, &state.http, &release, &dir).await?;
+        std::process::Command::new(&setup)
+            .args(["/P", "/R", "/UPDATE"])
+            .spawn()
+            .map_err(|e| format!("Couldn't start the installer: {e}"))?;
+        // The page shows "Installing" first; the installer would close Cadence anyway.
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            app.exit(0);
+        });
+        Ok(true)
+    }
+    #[cfg(all(desktop, not(windows)))]
     {
         let _ = (app, state);
-        Err("Updates come as installers on the desktop.".into())
+        Err("Updates are only for Windows and phones.".into())
     }
 }
 

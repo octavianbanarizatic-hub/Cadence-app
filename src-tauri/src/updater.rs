@@ -1,8 +1,10 @@
-//! Phone app updates. New versions are published as APKs in the releases of
-//! the public Cadence-app repository on GitHub (Cadence-releases until 1.0.0).
-//! The app compares the latest release with its own version and, when asked,
-//! downloads the APK and hands it to Android's installer, which only puts it
-//! over the installed app when it is signed with the same key.
+//! App updates. New versions are published in the releases of the public
+//! Cadence-app repository on GitHub (Cadence-releases until 1.0.0), with an
+//! APK for phones and a setup program for Windows (since 1.1.0). The app
+//! compares the latest release with its own version and, when asked,
+//! downloads its file. Phones hand the APK to Android's installer, which only
+//! puts it over the installed app when it is signed with the same key; the
+//! desktop runs the setup program, which replaces Cadence and starts it again.
 
 use std::path::{Path, PathBuf};
 
@@ -15,6 +17,12 @@ use tokio::io::AsyncWriteExt;
 
 const REPO: &str = "octavianbanarizatic-hub/Cadence-app";
 
+/// How this platform's file in a release ends.
+#[cfg(not(desktop))]
+const ASSET: &str = ".apk";
+#[cfg(desktop)]
+const ASSET: &str = "-setup.exe";
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Release {
@@ -24,7 +32,7 @@ pub struct Release {
     #[serde(skip)]
     pub url: String,
     pub size: u64,
-    /// GitHub's SHA-256 of the APK, when it lists one.
+    /// GitHub's SHA-256 of the file, when it lists one.
     #[serde(skip)]
     pub sha256: Option<String>,
 }
@@ -50,13 +58,14 @@ fn is_newer(candidate: &str, current: &str) -> bool {
     !a.is_empty() && a > b
 }
 
-/// The latest release from GitHub's API answer, with its APK.
-fn parse_release(json: &Value) -> Option<Release> {
+/// The latest release from GitHub's API answer, with its file whose name
+/// ends with `asset`.
+fn parse_release(json: &Value, asset: &str) -> Option<Release> {
     let version = json["tag_name"].as_str()?.trim_start_matches(['v', 'V']).to_string();
     let asset = json["assets"]
         .as_array()?
         .iter()
-        .find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(".apk")))?;
+        .find(|a| a["name"].as_str().is_some_and(|n| n.ends_with(asset)))?;
     let url = asset["browser_download_url"].as_str()?.to_string();
     // Only ever download from the release repository itself.
     if !url.starts_with(&format!("https://github.com/{REPO}/releases/download/")) {
@@ -89,11 +98,10 @@ pub async fn check(http: &reqwest::Client, current: &str) -> Result<Check, Strin
         .json()
         .await
         .map_err(|e| format!("Couldn't check for updates: {e}"))?;
-    let update = parse_release(&json).filter(|r| is_newer(&r.version, current));
+    let update = parse_release(&json, ASSET).filter(|r| is_newer(&r.version, current));
     Ok(Check { current: current.into(), update })
 }
 
-#[cfg_attr(desktop, allow(dead_code))]
 #[derive(Clone, Serialize)]
 struct Progress {
     downloaded: u64,
@@ -101,11 +109,12 @@ struct Progress {
 }
 
 /// Downloads `release` into `dir` (once; a finished file is reused) and
-/// returns the APK's path. Sends `update-progress` events along the way.
-#[cfg_attr(desktop, allow(dead_code))]
+/// returns the file's path. Sends `update-progress` events along the way.
 pub async fn download(app: &AppHandle, http: &reqwest::Client, release: &Release, dir: &Path) -> Result<PathBuf, String> {
     let io = |e: std::io::Error| format!("Couldn't save the update: {e}");
-    let dest = dir.join(format!("Cadence-{}.apk", release.version));
+    // Named from the version's numbers only, whatever the release's tag holds.
+    let version = version_parts(&release.version).iter().map(u64::to_string).collect::<Vec<_>>().join(".");
+    let dest = dir.join(format!("Cadence-{version}{ASSET}"));
     if release.size > 0 && tokio::fs::metadata(&dest).await.is_ok_and(|m| m.len() == release.size) {
         return Ok(dest);
     }
@@ -170,11 +179,28 @@ mod tests {
                 { "name": "Cadence-0.5.1.apk", "browser_download_url": url, "size": 42, "digest": "sha256:ABC" }
             ]
         });
-        let r = parse_release(&json).unwrap();
+        let r = parse_release(&json, ".apk").unwrap();
         assert_eq!((r.version.as_str(), r.notes.as_str(), r.size), ("0.5.1", "Fixes", 42));
         assert_eq!((r.url.as_str(), r.sha256.as_deref()), (url.as_str(), Some("abc")));
-        // APKs from anywhere else are ignored.
+        // Files from anywhere else are ignored.
         let elsewhere = json!({ "tag_name": "v9", "assets": [{ "name": "a.apk", "browser_download_url": "https://evil.example/a.apk" }] });
-        assert_eq!(parse_release(&elsewhere), None);
+        assert_eq!(parse_release(&elsewhere, ".apk"), None);
+    }
+
+    #[test]
+    fn each_platform_takes_its_own_file() {
+        let base = format!("https://github.com/{REPO}/releases/download/v1.1.0");
+        let json = json!({
+            "tag_name": "v1.1.0",
+            "assets": [
+                { "name": "Cadence-1.1.0-setup.exe", "browser_download_url": format!("{base}/Cadence-1.1.0-setup.exe"), "size": 3 },
+                { "name": "Cadence-1.1.0.apk", "browser_download_url": format!("{base}/Cadence-1.1.0.apk"), "size": 40 }
+            ]
+        });
+        assert_eq!(parse_release(&json, ".apk").unwrap().size, 40);
+        assert_eq!(parse_release(&json, "-setup.exe").unwrap().size, 3);
+        // 1.0.x releases had no setup program: the desktop finds no update there.
+        let phone_only = json!({ "tag_name": "v1.0.1", "assets": [{ "name": "Cadence-1.0.1.apk", "browser_download_url": format!("{base}/x.apk") }] });
+        assert_eq!(parse_release(&phone_only, "-setup.exe"), None);
     }
 }
