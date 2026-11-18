@@ -88,6 +88,7 @@ const lines = {
   restore: "M12 4v11M7 10l5 5 5-5M5 14v6h14v-6",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
+  mobileData: "M8 20V4M4 8l4-4 4 4M16 4v16M12 16l4 4 4-4",
   nowPlaying: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM14 5v14M7 10l3 2-3 2z",
   volume: "M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
   mute: "M4 9h4l5-4v14l-5-4H4zM17 9.5l5 5M22 9.5l-5 5",

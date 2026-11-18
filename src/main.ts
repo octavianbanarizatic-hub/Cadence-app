@@ -2666,7 +2666,8 @@ function renderSettings() {
     <p class="setting-note">Applies to new downloads. Songs you already saved keep their quality.</p>
     <h2 class="section-label">Automatic downloads</h2>
     <div class="box">
-      ${toggle("auto-liked", "download", "Download liked songs", phone ? "On Wi-Fi, songs you like download by themselves" : "Songs you like download by themselves", settings.get("autoDownloadLiked", false))}
+      ${toggle("auto-liked", "download", "Download liked songs", "Songs you like download by themselves", settings.get("autoDownloadLiked", false))}
+      ${phone ? toggle("auto-data", "mobileData", "Use mobile data", "Also download when you're not on Wi-Fi. Songs can take a lot of data", autoOnData()) : ""}
     </div>
     <p class="setting-note">${
       phone
@@ -2713,6 +2714,14 @@ function renderSettings() {
   bindToggle("fade-pause", () => (player.setFadePause(!player.fadePause), player.fadePause));
   bindToggle("autoplay", () => (player.setAutoplay(!player.autoplay), player.autoplay));
   if (phone) bindToggle("float-nav", () => setFloatNav(!floatNav()));
+  if (phone) {
+    bindToggle("auto-data", () => {
+      const on = !autoOnData();
+      settings.set("autoDownloadData", on);
+      if (on) void autoDownload();
+      return on;
+    });
+  }
   bindToggle("auto-liked", () => {
     const on = !settings.get("autoDownloadLiked", false);
     settings.set("autoDownloadLiked", on);
@@ -3313,20 +3322,25 @@ function bindQueueTools() {
 
 // ---- automatic downloads ---------------------------------------------------------
 
-/** Playlists whose songs download by themselves (on phones, on Wi-Fi). */
+/** Playlists whose songs download by themselves (on phones, on Wi-Fi unless mobile data is allowed). */
 let autoLists = settings.get<number[]>("autoDownloadLists", []);
+
+/** Phones: whether automatic downloads may use mobile data too (Settings). */
+function autoOnData(): boolean {
+  return settings.get("autoDownloadData", false);
+}
 
 function autoItem(id: number): MenuItem {
   const on = autoLists.includes(id);
   return {
     label: "Download automatically",
     icon: "download",
-    sub: on ? "On · new songs download on Wi-Fi" : "New songs download on Wi-Fi",
+    sub: autoOnData() ? (on ? "On · new songs download by themselves" : "New songs download by themselves") : on ? "On · new songs download on Wi-Fi" : "New songs download on Wi-Fi",
     on,
     run: () => {
       autoLists = on ? autoLists.filter((l) => l !== id) : [...autoLists, id];
       settings.set("autoDownloadLists", autoLists);
-      toast(on ? "Stopped downloading automatically" : phone ? "Downloads automatically on Wi-Fi" : "Downloads automatically");
+      toast(on ? "Stopped downloading automatically" : phone && !autoOnData() ? "Downloads automatically on Wi-Fi" : "Downloads automatically");
       if (!on) void autoDownload();
     },
   };
@@ -3336,8 +3350,9 @@ let autoRunning = false;
 
 /**
  * Downloads liked songs and the chosen playlists' songs that aren't saved
- * yet, on phones on Wi-Fi only. Runs when the app opens or comes back, when
- * the connection changes, and when songs are liked or added.
+ * yet, on phones on Wi-Fi only unless Settings allows mobile data. Runs when
+ * the app opens or comes back, when the connection changes, and when songs
+ * are liked or added.
  */
 async function autoDownload() {
   if (autoRunning || !engine?.installed) return;
@@ -3345,7 +3360,7 @@ async function autoDownload() {
   if (!likedOn && !autoLists.length) return;
   autoRunning = true;
   try {
-    if (!(await api.unmetered())) return;
+    if (!autoOnData() && !(await api.unmetered())) return;
     const tracks = likedOn ? [...liked.values()] : [];
     for (const id of autoLists) {
       // A deleted playlist is just skipped.
