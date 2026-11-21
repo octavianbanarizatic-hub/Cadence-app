@@ -136,7 +136,7 @@ function artHtml(track: Track, size: "sm" | "lg" = "sm"): string {
 
 /** Row markup; `offset` is the index of the first track within its list.
  *  With `removeTitle`, an X that removes the row takes the place of ⋮. */
-function trackRows(tracks: Track[], offset = 0, removeTitle?: string): string {
+function trackRows(tracks: Track[], offset = 0, removeTitle?: string, handle = false): string {
   return tracks
     .map((t, j) => {
       const i = offset + j;
@@ -157,6 +157,7 @@ function trackRows(tracks: Track[], offset = 0, removeTitle?: string): string {
             ? `<button class="icon-btn small" data-act="remove" title="${removeTitle}">${icon("close", 18)}</button>`
             : `<button class="icon-btn small" data-act="more" title="More">${icon("more", 18)}</button>`
         }
+        ${handle ? `<span class="q-handle" title="Drag to move">${icon("drag", 20)}</span>` : ""}
       </div>`;
     })
     .join("");
@@ -270,6 +271,9 @@ function pageFor(target: string): Page | null {
   return null;
 }
 
+/** Each list's handle listeners, so mounting a list again replaces them. */
+const handleListeners = new WeakMap<HTMLElement, AbortController>();
+
 interface ListOptions {
   /** Where the list is, for "Playing from" ("Liked songs", a playlist's name). */
   from?: string;
@@ -292,15 +296,18 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
   let shown = 0;
   el.innerHTML = "";
   const scroller = $("#view");
+  // Phones move songs by a handle on each row (touch screens don't drag and drop).
+  const handles = phone && Boolean(opts.reorder);
+  el.classList.toggle("sortable", handles);
   loadMoreRows = () => {
     // Keep adding pages until the list reaches well below the visible area.
     while (shown < tracks.length && el.isConnected) {
       const bottom = el.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
       if (shown > 0 && bottom > 1200) break;
-      el.insertAdjacentHTML("beforeend", trackRows(tracks.slice(shown, shown + PAGE), shown, opts.remove?.title));
+      el.insertAdjacentHTML("beforeend", trackRows(tracks.slice(shown, shown + PAGE), shown, opts.remove?.title, handles));
       shown = Math.min(tracks.length, shown + PAGE);
     }
-    if (opts.reorder) el.querySelectorAll(".track").forEach((r) => r.setAttribute("draggable", "true"));
+    if (opts.reorder && !phone) el.querySelectorAll(".track").forEach((r) => r.setAttribute("draggable", "true"));
     markPlaying();
   };
   loadMoreRows();
@@ -314,9 +321,10 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
   }
 
   const rowOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>(".track");
+  const onHandle = (e: Event) => Boolean((e.target as HTMLElement).closest(".q-handle"));
   el.onclick = (e) => {
     const row = rowOf(e);
-    if (!row || justSwiped()) return;
+    if (!row || justSwiped() || onHandle(e)) return;
     const i = Number(row.dataset.i);
     const track = tracks[i];
     const go = (e.target as HTMLElement).closest<HTMLElement>("[data-go]")?.dataset.go;
@@ -343,6 +351,7 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
     const row = rowOf(e);
     if (!row) return;
     e.preventDefault();
+    if (onHandle(e)) return;
     const i = Number(row.dataset.i);
     openMenu(e, tracks[i], opts.menu?.(i));
   };
@@ -350,7 +359,7 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
     let row: HTMLElement | null = null;
     const left = opts.swipeLeft;
     onSwipe(el, {
-      begin: (e) => (row = rowOf(e)) !== null,
+      begin: (e) => !onHandle(e) && (row = rowOf(e)) !== null,
       move: (dx) => row && (dx < 0 && left ? swipeRow(row, dx, left) : swipeRow(row, Math.max(0, dx), QUEUE_SWIPE)),
       end: (dx) => {
         if (!row) return;
@@ -365,6 +374,8 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
       },
     });
   }
+  if (handles && opts.reorder) bindHandles(el, scroller, ".track", opts.reorder, undefined, true);
+  else handleListeners.get(el)?.abort();
   if (opts.reorder) {
     const reorder = opts.reorder;
     let from = -1;
@@ -645,9 +656,30 @@ function setView(v: Exclude<View, "page">) {
   show(v, null);
 }
 
+/** Phones: the playlist whose songs show drag handles ("Change order"), if any. */
+let reordering: number | null = null;
+
+/** Phones: shows or hides a playlist's drag handles, opening it if needed. */
+function changeOrder(id: number, on: boolean) {
+  reordering = on ? id : null;
+  if (on && listSorts[`playlist:${id}`]) {
+    // Songs only move in the playlist's own order.
+    delete listSorts[`playlist:${id}`];
+    settings.set("listSorts", listSorts);
+  }
+  if (page?.kind === "playlist" && page.id === id) refreshPlaylistPage(id);
+  else if (on) openPlaylist(id);
+}
+
+/** Phones: "Change order" in a playlist's menus (two songs or more). */
+function orderItem(id: number, songs: number): MenuItem[] {
+  return phone && songs > 1 ? [{ label: "Change order", icon: "drag", sub: "Drag songs to move them", run: () => changeOrder(id, true) }] : [];
+}
+
 function show(v: View, p: Page | null, scroll = 0) {
   view = v;
   page = p;
+  if (!(p?.kind === "playlist" && p.id === reordering)) reordering = null;
   // On phones the full-screen player covers the page that is about to open.
   setNowPlayingOpen(false);
   if (v !== "page") settings.set("view", v);
@@ -744,6 +776,7 @@ function back(): boolean {
   else if (!$("#eq-panel").hidden) setEqOpen(false);
   else if (side) setSidePanel(null);
   else if ($(".player").classList.contains("expanded")) setNowPlayingOpen(false);
+  else if (reordering !== null) changeOrder(reordering, false);
   else if (history.length) goBack();
   else if (view !== startView) setView(startView);
   else return false;
@@ -1102,6 +1135,7 @@ function bindPlaylistHold() {
         ? [
             { label: "Share", icon: "share", run: withSongs((tracks) => shareTracks(pl.name, tracks)) } satisfies MenuItem,
             autoItem(pl.id),
+            ...orderItem(pl.id, pl.count),
             { label: "Rename…", icon: "edit", divider: true, run: () => void renamePlaylist(pl.id, pl.name) } satisfies MenuItem,
             ...coverItems(pl.id, !!pl.thumbnail?.startsWith("pcover/")),
             { label: "Delete playlist", icon: "trash", run: () => void deletePlaylist(pl.id, pl.name) } satisfies MenuItem,
@@ -2566,12 +2600,18 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
     };
   }
   const pl = await api.playlist(p.id);
+  // Nothing left to put in order (songs removed meanwhile).
+  if (reordering === pl.id && pl.tracks.length < 2) reordering = null;
   const extra = `<button class="icon-btn" data-hero="more" title="More">${icon("more", 22)}</button>`;
   const meta = [count(pl.tracks.length, "song"), totalTime(pl.tracks)].filter(Boolean).join(" · ") || "Empty";
   return {
     markup:
       hero({ art: pl.cover ? imgUrl(pl.cover) : artUrl(pl.tracks.find((t) => t.thumbnail)), fallback: "playlist", label: pl.source ? "Imported playlist" : "Playlist", title: pl.name, meta, tracks: pl.tracks, extra }) +
-      (pl.tracks.length > 1 ? listTools() : "") +
+      (reordering === pl.id
+        ? `<div class="order-bar"><span>${icon("drag", 20)}Drag the dots to move songs</span><button class="btn primary" id="order-done">Done</button></div>`
+        : pl.tracks.length > 1
+          ? listTools()
+          : "") +
       list,
     mount: () => {
       const el = $("#page-list");
@@ -2596,9 +2636,10 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
                 toast(`Removed from ${pl.name}`, "info", { label: "Undo", run: () => save(pl.tracks) });
               },
             },
-            // Dragging only makes sense in the playlist's own order.
+            // Dragging only makes sense in the playlist's own order. Phones show
+            // handles only after "Change order", so a stray touch can't move songs.
             reorder:
-              list.length === pl.tracks.length && list.every((t, i) => t === pl.tracks[i])
+              (!phone || reordering === pl.id) && list.length === pl.tracks.length && list.every((t, i) => t === pl.tracks[i])
                 ? (from, to) => {
                     const tracks = pl.tracks.slice();
                     const [moved] = tracks.splice(from, 1);
@@ -2610,6 +2651,7 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
         });
       }
       bindHero(shown, pl.name);
+      document.getElementById("order-done")?.addEventListener("click", () => changeOrder(pl.id, false));
       document.querySelector<HTMLElement>('[data-hero="more"]')?.addEventListener("click", (e) =>
         menuUnder(e, [
           ...(pl.tracks.length
@@ -2621,6 +2663,7 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
               ]
             : []),
           pinItem(pl.id),
+          ...orderItem(pl.id, pl.tracks.length),
           { label: "Rename…", icon: "edit", divider: pl.tracks.length > 0, run: () => void renamePlaylist(pl.id, pl.name) },
           ...coverItems(pl.id, !!pl.cover),
           { label: "Delete playlist", icon: "trash", run: () => void deletePlaylist(pl.id, pl.name) },
@@ -4502,10 +4545,27 @@ function dropIndex(from: number, t: { item: HTMLElement; after: boolean }): numb
 }
 
 /**
- * Phones: a song in the queue is dragged by its handle, since touch screens
- * don't do the desktop's drag and drop. The list scrolls near its edges.
+ * Phones: a song (`item`, in `list`) is dragged by its handle, since touch
+ * screens don't do the desktop's drag and drop; the queue and playlists use
+ * this. `scroller` scrolls near its edges. `drop` gets the song's old and new
+ * position; `cancel` runs when it ends where it started. With `floating`, the
+ * tabs and the player bar lie over the scroller's bottom, so scrolling starts
+ * above them.
  */
-function bindQueueHandles(list: HTMLElement) {
+function bindHandles(
+  list: HTMLElement,
+  scroller: HTMLElement,
+  itemSel: string,
+  drop: (from: number, to: number) => void,
+  cancel?: () => void,
+  floating = false,
+) {
+  handleListeners.get(list)?.abort();
+  const listening = new AbortController();
+  handleListeners.set(list, listening);
+  const opts = { signal: listening.signal };
+  /** The song last dropped: no new drag until the list is drawn again (its save may be on the way). */
+  let dropped: HTMLElement | null = null;
   let drag: {
     from: number;
     to: number;
@@ -4522,8 +4582,8 @@ function bindQueueHandles(list: HTMLElement) {
   const follow = () => {
     if (!drag) return;
     const d = drag;
-    d.item.style.translate = `0 ${d.y - d.startY + list.scrollTop - d.startScroll}px`;
-    const y = d.y - list.getBoundingClientRect().top + list.scrollTop;
+    d.item.style.translate = `0 ${d.y - d.startY + scroller.scrollTop - d.startScroll}px`;
+    const y = d.y - scroller.getBoundingClientRect().top + scroller.scrollTop;
     d.to = d.from;
     for (const o of d.others) {
       if (o.i < d.from && y < o.mid) d.to = Math.min(d.to, o.i);
@@ -4535,41 +4595,68 @@ function bindQueueHandles(list: HTMLElement) {
       o.el.style.translate = shift ? `0 ${shift}px` : "";
     }
   };
+  /** Lets go of the song without moving it, e.g. when the list was drawn again mid-drag. */
+  const abandon = () => {
+    if (!drag) return;
+    cancelAnimationFrame(drag.frame);
+    list.classList.remove("sorting");
+    for (const el of [drag.item, ...drag.others.map((o) => o.el)]) el.style.translate = "";
+    drag.item.classList.remove("lifted");
+    drag = null;
+  };
+  listening.signal.addEventListener("abort", abandon);
   const autoScroll = () => {
     if (!drag) return;
-    const r = list.getBoundingClientRect();
-    const edge = drag.y < r.top + 60 ? -1 : drag.y > r.bottom - 60 ? 1 : 0;
+    if (!drag.item.isConnected) return abandon();
+    const r = scroller.getBoundingClientRect();
+    let bottom = r.bottom;
+    if (floating) {
+      for (const over of document.querySelectorAll<HTMLElement>(".player, .tabbar")) {
+        const box = over.getBoundingClientRect();
+        if (box.height && box.top > r.top) bottom = Math.min(bottom, box.top);
+      }
+    }
+    const edge = drag.y < r.top + 60 ? -1 : drag.y > bottom - 60 ? 1 : 0;
     if (edge) {
-      list.scrollTop += edge * 10;
+      scroller.scrollTop += edge * 10;
       follow();
     }
     drag.frame = requestAnimationFrame(autoScroll);
   };
-  list.onpointerdown = (e) => {
-    const handle = (e.target as HTMLElement).closest(".q-handle");
-    const item = handle?.closest<HTMLElement>(".q-item");
-    if (!handle || !item) return;
-    e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
-    item.classList.add("lifted");
-    list.classList.add("sorting");
-    const top = list.getBoundingClientRect().top - list.scrollTop;
-    const others = [...list.querySelectorAll<HTMLElement>(".q-item")]
-      .filter((el) => el !== item)
-      .map((el) => {
-        const r = el.getBoundingClientRect();
-        return { el, i: Number(el.dataset.i), mid: r.top - top + r.height / 2 };
-      });
-    const from = Number(item.dataset.i);
-    const at = { startY: e.clientY, y: e.clientY, startScroll: list.scrollTop };
-    drag = { from, to: from, item, id: e.pointerId, ...at, others, frame: requestAnimationFrame(autoScroll) };
-    navigator.vibrate?.(12);
-  };
-  list.onpointermove = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    drag.y = e.clientY;
-    follow();
-  };
+  // Listeners, not on… properties: song lists use those for swipes.
+  list.addEventListener(
+    "pointerdown",
+    (e) => {
+      const handle = (e.target as HTMLElement).closest(".q-handle");
+      const item = handle?.closest<HTMLElement>(itemSel);
+      if (!handle || !item || dropped?.isConnected) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      item.classList.add("lifted");
+      list.classList.add("sorting");
+      const top = scroller.getBoundingClientRect().top - scroller.scrollTop;
+      const others = [...list.querySelectorAll<HTMLElement>(itemSel)]
+        .filter((el) => el !== item)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { el, i: Number(el.dataset.i), mid: r.top - top + r.height / 2 };
+        });
+      const from = Number(item.dataset.i);
+      const at = { startY: e.clientY, y: e.clientY, startScroll: scroller.scrollTop };
+      drag = { from, to: from, item, id: e.pointerId, ...at, others, frame: requestAnimationFrame(autoScroll) };
+      navigator.vibrate?.(12);
+    },
+    opts,
+  );
+  list.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag.y = e.clientY;
+      follow();
+    },
+    opts,
+  );
   const end = (e: PointerEvent) => {
     if (!drag || e.pointerId !== drag.id) return;
     const { from, to, item, others, frame } = drag;
@@ -4577,12 +4664,17 @@ function bindQueueHandles(list: HTMLElement) {
     drag = null;
     list.classList.remove("sorting");
     item.classList.remove("lifted");
+    if (e.type === "pointerup" && to !== from) {
+      // Put the song where it was dropped now; the list is drawn again later.
+      const target = others.find((o) => o.i === to)?.el;
+      target?.[to > from ? "after" : "before"](item);
+      dropped = item;
+      drop(from, to);
+    } else cancel?.();
     for (const el of [item, ...others.map((o) => o.el)]) el.style.translate = "";
-    if (e.type === "pointerup" && to !== from) player.move(from, to);
-    else renderQueue();
   };
-  list.onpointerup = end;
-  list.onpointercancel = end;
+  list.addEventListener("pointerup", end, opts);
+  list.addEventListener("pointercancel", end, opts);
 }
 
 function bindQueue() {
@@ -4620,7 +4712,7 @@ function bindQueue() {
     clearMarks();
     dragFrom = -1;
   });
-  if (phone) bindQueueHandles(list);
+  if (phone) bindHandles(list, list, ".q-item", (from, to) => player.move(from, to), renderQueue);
   $("#queue-clear").onclick = () => player.clearUpcoming();
 }
 

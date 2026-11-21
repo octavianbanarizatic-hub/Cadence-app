@@ -48,6 +48,13 @@ const URL_WARMUP: Duration = Duration::ZERO;
 const URL_FRESH: Duration = Duration::from_secs(3);
 #[cfg(target_os = "android")]
 const FRESH_RETRY: Duration = Duration::from_millis(250);
+/// Some URLs YouTube hands out are refused for good. One still refused after
+/// `URL_FRESH` but younger than this never worked: phones get a new one at
+/// once (up to `NEW_URLS` times) instead of waiting on it.
+#[cfg(target_os = "android")]
+const URL_DEAD: Duration = Duration::from_secs(15);
+#[cfg(target_os = "android")]
+const NEW_URLS: u32 = 2;
 const MAX_ATTEMPTS: u32 = 6;
 
 type Fail = (StatusCode, String);
@@ -338,6 +345,8 @@ pub async fn fetch_youtube(
 ) -> Result<Chunk, Fail> {
     let bad_gateway = |e: String| (StatusCode::BAD_GATEWAY, e);
     let mut attempt = 1;
+    #[cfg(target_os = "android")]
+    let mut new_urls = 0;
     while attempt <= MAX_ATTEMPTS {
         let stream = state.streams.get(&state.ytdlp, id, quality).await.map_err(bad_gateway)?;
         let age = stream.resolved_at.elapsed();
@@ -368,9 +377,17 @@ pub async fn fetch_youtube(
         let status = resp.status();
         if (status == 403 || status == 410) && attempt < MAX_ATTEMPTS {
             #[cfg(target_os = "android")]
-            if stream.resolved_at.elapsed() < URL_FRESH {
-                tokio::time::sleep(FRESH_RETRY).await;
-                continue;
+            {
+                let age = stream.resolved_at.elapsed();
+                if age < URL_FRESH {
+                    tokio::time::sleep(FRESH_RETRY).await;
+                    continue;
+                }
+                if age < URL_DEAD && new_urls < NEW_URLS {
+                    new_urls += 1;
+                    state.streams.invalidate(id, quality);
+                    continue;
+                }
             }
             // Halfway through, assume the URL itself went bad and resolve a new one.
             if attempt == MAX_ATTEMPTS / 2 {

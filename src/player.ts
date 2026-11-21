@@ -86,6 +86,8 @@ export class Player extends EventTarget {
    */
   private unshuffled: Track[] | null = null;
   private errorStreak = 0;
+  /** The song given a second go after its stream failed, this play (`onError`). */
+  private retried: string | null = null;
   private warmed = new Map<string, number>();
   private prefetchTimer: number | undefined;
   private ahead: Track[] = [];
@@ -707,6 +709,8 @@ export class Player extends EventTarget {
     if (!track) return;
     if (remember && this.index >= 0 && this.index !== i) this.history.push(this.index);
     this.index = i;
+    // Each play of a song may get one second go (onError).
+    this.retried = null;
     // Once it plays, a queued song is just part of the list.
     this.queued.delete(track);
     clearTimeout(this.gaplessTimer);
@@ -786,11 +790,24 @@ export class Player extends EventTarget {
     this.audio.pause();
     // The media element hides the reason; ask the stream endpoint directly.
     let message = "This track could not be played.";
+    let works = false;
     try {
       const res = await fetch(this.audio.src, { headers: { Range: "bytes=0-1" } });
       if (!res.ok) message = (await res.text()) || message;
+      else works = true;
     } catch {
       /* keep the generic message */
+    }
+    // Asked again, the stream answered (YouTube sometimes refuses a new link
+    // for a while): give the song one more go instead of skipping it.
+    if (works && this.current === track && this.retried !== track.id) {
+      this.retried = track.id;
+      const at = this.audio.currentTime;
+      this.audio.src = streamUrl(track);
+      if (at) this.audio.currentTime = at;
+      this.setLoading(true);
+      this.audio.play().catch(() => {});
+      return;
     }
     this.emit("error", `${track.title}: ${message}`);
     this.errorStreak++;
