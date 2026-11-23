@@ -40,6 +40,13 @@ class PageHost(context: Context) : FrameLayout(context) {
         away = false
     }
 
+    // Android's panel for where the music plays (Outputs.pick) took the focus
+    // and gave it back: the output may have changed.
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (hasWindowFocus) Outputs.check()
+    }
+
     override fun dispatchWindowVisibilityChanged(visibility: Int) {
         super.dispatchWindowVisibilityChanged(if (keepShown) VISIBLE else visibility)
     }

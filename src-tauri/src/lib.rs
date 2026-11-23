@@ -225,6 +225,8 @@ pub fn run() {
             commands::share,
             commands::shared_link,
             commands::unmetered_network,
+            commands::audio_output,
+            commands::audio_output_pick,
             commands::share_image,
             commands::share_link,
             commands::open_link,

@@ -103,6 +103,7 @@ class CadencePlugin(private val activity: Activity) : Plugin(activity) {
     override fun onResume(activity: AppCompatActivity) {
         PageHost.current?.onAppResumed()
         tellPage("window.__cadenceAway && window.__cadenceAway(false)")
+        Outputs.check()
     }
 
     // A link tapped, or shared to Cadence, while the app runs (it is singleTask).
@@ -154,6 +155,8 @@ class CadencePlugin(private val activity: Activity) : Plugin(activity) {
                 webView.evaluateJavascript("window.__cadenceInsets && window.__cadenceInsets($bottom)", null)
             }
         }
+        Outputs.onChange = { json -> tellPage("window.__cadenceOutput && window.__cadenceOutput($json)") }
+        Outputs.watch(activity.applicationContext)
         val owner = activity as? ComponentActivity ?: return
         owner.onBackPressedDispatcher.addCallback(owner, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -304,6 +307,25 @@ class CadencePlugin(private val activity: Activity) : Plugin(activity) {
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
         invoke.resolve(JSObject().put("unmetered", unmetered))
+    }
+
+    /** Where the music plays, for the page's first look (Outputs). */
+    @Command
+    fun audioOutput(invoke: Invoke) {
+        invoke.resolve(JSObject(Outputs.describe(activity)))
+    }
+
+    /** Opens Android's panel for picking where the music plays (Outputs). */
+    @Command
+    fun pickAudioOutput(invoke: Invoke) {
+        activity.runOnUiThread {
+            try {
+                Outputs.pick(activity)
+                invoke.resolve()
+            } catch (e: Throwable) {
+                invoke.reject(e.message ?: e.toString())
+            }
+        }
     }
 
     /** The navigation bar's height, for the page's first layout (SystemBars). */

@@ -81,7 +81,9 @@
           <div class="now-text">
             <div class="now-title" id="now-title">Nothing playing</div>
             <div class="now-artist" id="now-artist"></div>
+            <div class="now-device" id="now-device" hidden></div>
           </div>
+          <button class="icon-btn small now-out" id="now-out" title="Play on" data-icon="devices" hidden></button>
           <button class="icon-btn small like" id="now-like" title="Like" hidden></button>
           <button class="icon-btn small now-dl" id="now-dl" title="Download" hidden></button>
         </div>
@@ -99,6 +101,8 @@
             <span class="time" id="time-dur">0:00</span>
           </div>
         </div>
+        <!-- Phones: where the music plays; tapping picks another place. -->
+        <button class="np-out" id="np-out" hidden></button>
         <div class="extras">
           <button class="icon-btn small toggle" id="btn-eq" title="Equalizer" data-icon="eq"><span class="lbl">Equalizer</span></button>
           <button class="icon-btn small toggle" id="btn-lyrics" title="Lyrics (L)" data-icon="lyrics"><span class="lbl">Lyrics</span></button>

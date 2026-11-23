@@ -60,6 +60,9 @@
 .np-from,
 .np-more,
 .now-dl,
+.now-out,
+.now-device,
+.np-out,
 .panel-close,
 .panel-back,
 .q-transport,
@@ -2188,6 +2191,66 @@
   color: var(--red);
 }
 
+/* Where the music plays (main.ts: showOutput), like Spotify: the picker
+   beside the heart, and somewhere else than the phone, that place's name in
+   red under the song's title. */
+.phone .player:not(.expanded) .now-out:not([hidden]) {
+  display: grid;
+  flex-shrink: 0;
+  width: 40px;
+  height: 44px;
+  margin: 0 -6px 0 auto;
+  color: var(--text-2);
+}
+
+.phone .player:not(.expanded) .now-out.away {
+  color: var(--red);
+}
+
+/* The narrowest phones keep the song's name readable; the full-screen
+   player still has the picker. */
+@media (max-width: 379px) {
+  .phone .player:not(.expanded) .now-out:not([hidden]) {
+    display: none;
+  }
+
+  .phone .player:not(.expanded) .now-out:not([hidden]) + #now-like {
+    margin-left: auto;
+  }
+}
+
+.phone .player:not(.expanded) .now-out:not([hidden]) + #now-like {
+  margin-left: 0;
+}
+
+/* The bar is too narrow for title, artist and place: the artist gives way
+   (it's in the full-screen player). */
+.phone .player:not(.expanded) .now-text.away .now-artist {
+  display: none;
+}
+
+.phone .player:not(.expanded) .now-device:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--red);
+}
+
+.phone .now-device .icon {
+  flex: none;
+}
+
+.phone .now-device span,
+.phone .np-out span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .phone .player:not(.expanded) .buttons {
   gap: 0;
 }
@@ -2333,7 +2396,8 @@
 .phone .player.expanded .now-art {
   grid-area: art;
   justify-self: center;
-  width: min(100%, 46vh);
+  /* Short screens shrink it to leave room for the line saying where the music plays. */
+  width: min(100%, calc(46vh - 18px));
   height: auto;
   aspect-ratio: 1;
   border-radius: 20px;
@@ -2538,6 +2602,38 @@
 
 .phone .play-btn.loading::after {
   border-top-color: var(--text);
+}
+
+/* Where the music plays, on its own line above Queue, Lyrics and Equalizer;
+   red when it isn't the phone. Tapping it opens Android's panel. */
+.phone .player.expanded .np-out:not([hidden]) {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: 44px;
+  margin-top: auto;
+  padding: 0 14px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.phone .player.expanded .np-out.away {
+  color: var(--red);
+}
+
+.phone .np-out .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.phone .player.expanded .np-out:not([hidden]) + .extras {
+  margin-top: 0;
 }
 
 /* Queue, Lyrics and Equalizer along the bottom. */

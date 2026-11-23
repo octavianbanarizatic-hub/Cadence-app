@@ -73,6 +73,7 @@
 
 **Around the phone**
 - Lock-screen and notification controls, a home-screen widget and Android Auto.
+- See where the music plays (the Bluetooth speaker's or headphones' name, under the song) and switch with one tap.
 - Sleep timer, swipe gestures, and a floating tab bar if you like it.
 - Share songs, albums and playlists with a link. Friends with Cadence open it straight in the app; everyone else gets a page with YouTube Music.
 - Open YouTube and YouTube Music links in Cadence from the share menu.

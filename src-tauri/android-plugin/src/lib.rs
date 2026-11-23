@@ -137,6 +137,14 @@ struct Allowed {
     allowed: bool,
 }
 
+/// Where the music plays: `kind` is "phone", "bluetooth", "headphones" or
+/// "speaker"; `name` is the device's own, when Android has one worth showing.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AudioOutput {
+    pub kind: String,
+    pub name: Option<String>,
+}
+
 /// These calls block until yt-dlp finishes; run them off the async runtime.
 impl<R: Runtime> CadenceAndroid<R> {
     /// Runs yt-dlp; with `worker` (Cadence's worker script), in the Python kept running for it.
@@ -252,6 +260,21 @@ impl<R: Runtime> CadenceAndroid<R> {
         self.0
             .run_mobile_plugin::<Allowed>("allowNotifications", ())
             .map(|a| a.allowed)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Where the music plays now; the page hears of changes as
+    /// `window.__cadenceOutput(output)`.
+    pub fn audio_output(&self) -> Result<AudioOutput, String> {
+        self.0.run_mobile_plugin("audioOutput", ()).map_err(|e| e.to_string())
+    }
+
+    /// Opens Android's panel for picking where the music plays (Bluetooth
+    /// settings on phones without one).
+    pub fn pick_audio_output(&self) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("pickAudioOutput", ())
+            .map(|_| ())
             .map_err(|e| e.to_string())
     }
 

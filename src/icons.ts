@@ -92,6 +92,12 @@ const lines = {
   year: "M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM4 10h16M8 3v4M16 3v4M8.5 15l2 2 4-4",
   bell: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
   mobileData: "M8 20V4M4 8l4-4 4 4M16 4v16M12 16l4 4 4-4",
+  // Where the music plays: the picker, and each kind of output.
+  devices: "M4 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM14 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM17 12a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM17 7h.01",
+  bluetooth: "M7 7l10 10-5 4V3l5 4L7 17",
+  headphones: "M4 18v-5a8 8 0 0 1 16 0v5M4 15h3v5H5a1 1 0 0 1-1-1zM20 15h-3v5h2a1 1 0 0 0 1-1z",
+  phone: "M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2",
+  speaker: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM12 7h.01",
   nowPlaying: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM14 5v14M7 10l3 2-3 2z",
   volume: "M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
   mute: "M4 9h4l5-4v14l-5-4H4zM17 9.5l5 5M22 9.5l-5 5",

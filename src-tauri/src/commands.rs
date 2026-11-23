@@ -518,6 +518,43 @@ pub fn unmetered_network(app: AppHandle) -> CmdResult<bool> {
     }
 }
 
+#[cfg(target_os = "android")]
+type AudioOutput = tauri_plugin_cadence_android::AudioOutput;
+#[cfg(desktop)]
+type AudioOutput = ();
+
+/// Phones: where the music plays (this phone, Bluetooth, headphones…), shown
+/// under the song. Later changes reach the page as `window.__cadenceOutput`.
+/// Nothing on desktop.
+#[tauri::command]
+pub fn audio_output(app: AppHandle) -> CmdResult<Option<AudioOutput>> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        app.cadence_android().audio_output().map(Some)
+    }
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        Ok(None)
+    }
+}
+
+/// Phones: opens Android's panel for picking where the music plays.
+#[tauri::command]
+pub fn audio_output_pick(app: AppHandle) -> CmdResult<()> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_cadence_android::CadenceAndroidExt;
+        app.cadence_android().pick_audio_output()
+    }
+    #[cfg(desktop)]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
 /// Phones: what the link that opened the app (or was shared to it) opens,
 /// once: a Cadence link, or a YouTube or YouTube Music one. Anything else
 /// shared to Cadence is an error the page shows.

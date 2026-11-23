@@ -8,6 +8,7 @@ import {
   formatTime,
   onAway,
   type AppUpdate,
+  type AudioOutput,
   type BackupSummary,
   type DownloadItem,
   type DownloadQuality,
@@ -1049,6 +1050,35 @@ function bindCommon() {
   document.querySelectorAll<HTMLElement>("[data-close-panel]").forEach((b) => (b.onclick = () => setSidePanel(null)));
 }
 
+const OUTPUTS: Record<AudioOutput["kind"], { label: string; icon: IconName }> = {
+  phone: { label: "This phone", icon: "phone" },
+  bluetooth: { label: "Bluetooth", icon: "bluetooth" },
+  headphones: { label: "Headphones", icon: "headphones" },
+  speaker: { label: "Speaker", icon: "speaker" },
+};
+
+/**
+ * Shows where the music plays. Somewhere else than the phone, its name goes
+ * in red under the song in the small bar (like Spotify); the full-screen
+ * player always says where, on its own line above Queue, Lyrics and Equalizer.
+ */
+function showOutput(out: AudioOutput) {
+  const kind = OUTPUTS[out.kind] ?? OUTPUTS.speaker;
+  const away = out.kind !== "phone";
+  const name = esc(out.name || kind.label);
+  const device = $("#now-device");
+  device.hidden = !away;
+  device.innerHTML = away ? `${icon(kind.icon, 14)}<span>${name}</span>` : "";
+  device.parentElement!.classList.toggle("away", away);
+  for (const id of ["#now-out", "#np-out"]) {
+    const button = $(id);
+    button.hidden = false;
+    button.classList.toggle("away", away);
+    button.title = `Playing on ${out.name || kind.label.toLowerCase()}`;
+  }
+  $("#np-out").innerHTML = `${icon(kind.icon, 18)}<span>${name}</span>`;
+}
+
 function bindPhone() {
   if (!phone) return;
   (window as unknown as { __cadenceBack: () => boolean }).__cadenceBack = back;
@@ -1060,6 +1090,16 @@ function bindPhone() {
   void api.navBarHeight().then(navBar, () => {});
   // A shared link tapped while Cadence runs.
   (window as unknown as { __cadenceLink: () => void }).__cadenceLink = () => void openSharedLink();
+  // Where the music plays (Outputs.kt): its name under the song, and a
+  // button that opens Android's panel to pick another place.
+  // A change pushed before the first answer arrives is the newer one.
+  let pushed = false;
+  (window as unknown as { __cadenceOutput: (out: AudioOutput) => void }).__cadenceOutput = (out) => {
+    pushed = true;
+    showOutput(out);
+  };
+  void api.audioOutput().then((out) => out && !pushed && showOutput(out), () => {});
+  $("#now-out").onclick = $("#np-out").onclick = () => void api.pickAudioOutput().catch((e) => toast(String(e), "error"));
   // Tapping the bar (anywhere but its buttons) opens the full-screen player.
   // A tap on the artist or album in the full-screen player has just closed
   // it to show their page; that tap must not open it again.

@@ -43,6 +43,13 @@ export interface MediaState {
   playing: boolean;
 }
 
+/** Where the music plays on a phone. */
+export interface AudioOutput {
+  kind: "phone" | "bluetooth" | "headphones" | "speaker";
+  /** The device's own name ("Samsung Q70CA 55"), when Android has one worth showing. */
+  name?: string | null;
+}
+
 export interface ListeningStats {
   seconds: number;
   plays: number;
@@ -228,6 +235,10 @@ export const api = {
   youtubePlaylist: (id: string) => invoke<{ title: string; tracks: Track[] }>("youtube_playlist", { id }),
   /** Phones: whether the internet connection is Wi-Fi or another one that isn't metered. */
   unmetered: () => invoke<boolean>("unmetered_network"),
+  /** Phones: where the music plays; null on desktop. Changes arrive as `window.__cadenceOutput`. */
+  audioOutput: () => invoke<AudioOutput | null>("audio_output"),
+  /** Phones: opens Android's panel for picking where the music plays. */
+  pickAudioOutput: () => invoke<void>("audio_output_pick"),
   prefetch: (id: string) => invoke<boolean>("prefetch", { id }),
   ytdlpStatus: () => invoke<YtDlpStatus>("ytdlp_status"),
   mediaState: (state: MediaState) => invoke<void>("media_state", { state }),

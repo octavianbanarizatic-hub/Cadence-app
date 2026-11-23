@@ -13,6 +13,14 @@
     <!-- New release notifications (Releases); Android 13 and newer ask first. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android's panel for where the music plays (Outputs.pick). -->
+    <queries>
+        <package android:name="com.android.systemui" />
+        <intent>
+            <action android:name="com.android.settings.panel.action.MEDIA_OUTPUT" />
+        </intent>
+    </queries>
+
     <application>
         <service
             android:name="dev.cadence.android.PlaybackService"
