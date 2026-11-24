@@ -639,8 +639,8 @@
   padding-bottom: 6px;
 }
 
-/* A genre's page: its color in place of a cover. */
-.desktop .main[data-view="category"] .hero-art {
+/* A mood or genre page: its color in place of a cover. */
+.desktop .main[data-view="mood"] .hero-art {
   background: linear-gradient(135deg, var(--page-art), color-mix(in oklab, var(--page-art) 55%, black));
 }
 

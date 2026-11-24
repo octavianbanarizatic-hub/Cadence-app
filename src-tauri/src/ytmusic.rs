@@ -589,6 +589,221 @@ fn parse_artist(id: &str, resp: &Value) -> Option<Artist> {
     })
 }
 
+// ---- Explore: charts, new releases, moods and genres ------------------------------
+
+/// A playlist or album on a shelf: a chart, a new release, one of a mood's playlists.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Card {
+    /// A playlist id ("PL…", "OLAK5uy_…", "RDCLAK5uy_…", without the "VL") or an album id ("MPRE…").
+    pub id: String,
+    pub title: String,
+    /// "Album • Artist", "Playlist • YouTube Music"…
+    pub sub: Option<String>,
+    pub thumbnail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Shelf {
+    pub title: String,
+    pub cards: Vec<Card>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Country {
+    /// Two letters ("RO"), or "ZZ" for Global.
+    pub code: String,
+    pub name: String,
+}
+
+/// A tile in Moods & genres; `params` opens its page.
+#[derive(Debug, Clone, Serialize)]
+pub struct Mood {
+    pub title: String,
+    pub params: String,
+    /// "#rrggbb", the stripe YouTube Music gives the tile.
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoodGroup {
+    pub title: String,
+    pub moods: Vec<Mood>,
+}
+
+/// Everything Search shows with nothing typed, besides recent searches.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Explore {
+    pub country: String,
+    pub countries: Vec<Country>,
+    pub charts: Vec<Card>,
+    pub top_artists: Vec<ArtistRef>,
+    pub new_releases: Vec<Card>,
+    pub moods: Vec<MoodGroup>,
+}
+
+/// Charts for `country` ("ZZ" is Global; YouTube Music shows Global for one it
+/// has no charts for), or without one for where the phone is. New releases and
+/// moods always go by where it is.
+pub async fn explore(http: &reqwest::Client, country: Option<&str>) -> Result<Explore, String> {
+    let mut charts = json!({ "browseId": "FEmusic_charts" });
+    if let Some(code) = country {
+        charts["formData"] = json!({ "selectedValues": [code] });
+    }
+    let (charts, releases, moods) = futures_util::join!(
+        call(http, "browse", charts),
+        browse(http, "FEmusic_new_releases"),
+        browse(http, "FEmusic_moods_and_genres"),
+    );
+    let charts = charts?;
+    let countries = parse_countries(&charts);
+    // The menu always lists where the phone is first.
+    let country = country.map(str::to_string).or_else(|| countries.first().map(|c| c.code.clone())).unwrap_or_else(|| "ZZ".into());
+    let cards = |resp: &Value, album: bool| -> Vec<Card> {
+        shelves(resp).into_iter().flat_map(|s| s.cards).filter(|c| c.id.starts_with("MPRE") == album).collect()
+    };
+    Ok(Explore {
+        country,
+        countries,
+        charts: cards(&charts, false),
+        top_artists: parse_artist_rows(&charts),
+        new_releases: releases.map(|r| cards(&r, true)).unwrap_or_default(),
+        moods: moods.map(|m| parse_moods(&m)).unwrap_or_default(),
+    })
+}
+
+/// A mood's or genre's page: shelves of playlists.
+pub async fn mood(http: &reqwest::Client, params: &str) -> Result<Vec<Shelf>, String> {
+    let resp = call(http, "browse", json!({ "browseId": "FEmusic_moods_and_genres_category", "params": params })).await?;
+    let shelves: Vec<Shelf> = shelves(&resp).into_iter().filter(|s| !s.cards.is_empty()).collect();
+    if shelves.is_empty() {
+        return Err("This list isn't available.".into());
+    }
+    Ok(shelves)
+}
+
+/// Mood params as YouTube Music writes them (base64).
+pub fn valid_params(params: &str) -> bool {
+    (1..256).contains(&params.len()) && params.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_=%+/".contains(&b))
+}
+
+/// The page's shelves of cards, in order: carousels ("contents") and grids ("items").
+fn shelves(resp: &Value) -> Vec<Shelf> {
+    fn walk(v: &Value, out: &mut Vec<Shelf>) {
+        match v {
+            Value::Object(map) => {
+                for (k, child) in map {
+                    let (head, items) = match k.as_str() {
+                        "musicCarouselShelfRenderer" => (&child["header"]["musicCarouselShelfBasicHeaderRenderer"]["title"], &child["contents"]),
+                        "gridRenderer" => (&child["header"]["gridHeaderRenderer"]["title"], &child["items"]),
+                        _ => {
+                            walk(child, out);
+                            continue;
+                        }
+                    };
+                    let cards = items.as_array().into_iter().flatten().filter_map(|c| c.get("musicTwoRowItemRenderer")).filter_map(parse_card);
+                    out.push(Shelf { title: text(head), cards: cards.collect() });
+                }
+            }
+            Value::Array(arr) => arr.iter().for_each(|c| walk(c, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(resp, &mut out);
+    out
+}
+
+/// A card that opens a playlist or an album; videos and artists aren't cards here.
+fn parse_card(c: &Value) -> Option<Card> {
+    let browse = browse_id(c).or_else(|| browse_id(c["title"]["runs"].get(0)?))?;
+    let id = if let Some(list) = browse.strip_prefix("VL").filter(|l| crate::share::valid_list_id(l)) {
+        list.to_string()
+    } else if valid_browse_id(&browse, "MPRE") {
+        browse
+    } else {
+        return None;
+    };
+    let title = text(&c["title"]);
+    if title.is_empty() {
+        return None;
+    }
+    let sub = Some(text(&c["subtitle"])).filter(|s| !s.is_empty());
+    Some(Card { id, title, sub, thumbnail: biggest_thumbnail(&c["thumbnailRenderer"]) })
+}
+
+/// The chart countries, each once, as the menu on music.youtube.com/charts lists them.
+fn parse_countries(resp: &Value) -> Vec<Country> {
+    let mut items = Vec::new();
+    collect(resp, "musicMultiSelectMenuItemRenderer", &mut items);
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter_map(|item| {
+            let code = country_code(item["formItemEntityKey"].as_str()?)?;
+            let name = text(&item["title"]);
+            (!name.is_empty() && seen.insert(code.clone())).then_some(Country { code, name })
+        })
+        .collect()
+}
+
+/// A country menu item's key holds "…explore_charts_country_menu_<digits>RO…" in base64.
+fn country_code(key: &str) -> Option<String> {
+    let raw = base64_decode(&key.replace("%3D", "="))?;
+    let raw = String::from_utf8_lossy(&raw);
+    let rest = &raw[raw.find("country_menu_")? + "country_menu_".len()..];
+    let code: String = rest.trim_start_matches(|c: char| c.is_ascii_digit()).chars().take(2).collect();
+    (code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase())).then_some(code)
+}
+
+/// Standard or URL-safe base64, padding optional.
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0);
+    for b in s.bytes().take_while(|&b| b != b'=') {
+        let v = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            _ => return None,
+        };
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+fn parse_moods(resp: &Value) -> Vec<MoodGroup> {
+    let mut grids = Vec::new();
+    collect(resp, "gridRenderer", &mut grids);
+    grids
+        .into_iter()
+        .map(|g| MoodGroup {
+            title: text(&g["header"]["gridHeaderRenderer"]["title"]),
+            moods: g["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|i| {
+                    let b = i.get("musicNavigationButtonRenderer")?;
+                    let params = b["clickCommand"]["browseEndpoint"]["params"].as_str().filter(|p| valid_params(p))?;
+                    // An ARGB number: 4288988671 is #a4c5ff.
+                    let color = b["solid"]["leftStripeColor"].as_u64().map(|c| format!("#{:06x}", c & 0xff_ffff));
+                    Some(Mood { title: text(&b["buttonText"]), params: params.to_string(), color })
+                })
+                .collect(),
+        })
+        .filter(|g| !g.moods.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,5 +1034,66 @@ mod tests {
             ("MPREb_gl".into(), "Get Lucky".into(), Some("Daft Punk • Pharrell Williams".into()), Some("2013".into())),
             ("MPREb_ny".into(), "No Year".into(), Some("Someone".into()), None),
         ]);
+    }
+    #[test]
+    fn parses_explore_shelves() {
+        let card = |id: &str, title: &str, sub: &str| json!({ "musicTwoRowItemRenderer": {
+            "title": { "runs": [{ "text": title }] },
+            "subtitle": { "runs": [{ "text": sub }] },
+            "navigationEndpoint": { "browseEndpoint": { "browseId": id }},
+            "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [{ "url": "https://yt3.googleusercontent.com/c=s576" }] }}}
+        }});
+        let video = json!({ "musicTwoRowItemRenderer": {
+            "title": { "runs": [{ "text": "A video" }] },
+            "navigationEndpoint": { "watchEndpoint": { "videoId": "dQw4w9WgXcQ" }}
+        }});
+        let resp = json!({ "contents": [
+            { "musicCarouselShelfRenderer": {
+                "header": { "musicCarouselShelfBasicHeaderRenderer": { "title": { "runs": [{ "text": "Video charts" }] }}},
+                "contents": [card("VLPL4fGSI1pDJn6L8lQpfbnXpXUR71uksmP2", "Top 100 Music Videos Romania", "Chart"), video]
+            }},
+            { "gridRenderer": {
+                "header": { "gridHeaderRenderer": { "title": { "runs": [{ "text": "Albums & singles" }] }}},
+                "items": [card("MPREb_ram", "Random Access Memories", "Album • Daft Punk"), card("UCdp", "An artist", "Artist")]
+            }}
+        ]});
+        let got: Vec<_> = shelves(&resp).into_iter().map(|s| (s.title, s.cards.into_iter().map(|c| (c.id, c.title, c.sub)).collect::<Vec<_>>())).collect();
+        assert_eq!(got, [
+            ("Video charts".to_string(), vec![("PL4fGSI1pDJn6L8lQpfbnXpXUR71uksmP2".to_string(), "Top 100 Music Videos Romania".to_string(), Some("Chart".to_string()))]),
+            ("Albums & singles".to_string(), vec![("MPREb_ram".to_string(), "Random Access Memories".to_string(), Some("Album • Daft Punk".to_string()))]),
+        ]);
+    }
+
+    #[test]
+    fn parses_chart_countries_and_moods() {
+        let country = |name: &str, key: &str| json!({ "musicMultiSelectMenuItemRenderer": { "title": { "runs": [{ "text": name }] }, "formItemEntityKey": key }});
+        // Real keys from music.youtube.com/charts; the selected country comes twice.
+        let resp = json!({ "items": [
+            country("Spain", "EidleHBsb3JlX2NoYXJ0c19jb3VudHJ5X21lbnVfMzE2NzY2NTY3RVMgkQEoAQ%3D%3D"),
+            country("Argentina", "EidleHBsb3JlX2NoYXJ0c19jb3VudHJ5X21lbnVfMzE2NzY2NTY3QVIgkQEoAQ%3D%3D"),
+            country("Spain", "EidleHBsb3JlX2NoYXJ0c19jb3VudHJ5X21lbnVfMzE2NzY2NTY3RVMgkQEoAQ%3D%3D"),
+            country("Broken", "not base64!"),
+        ]});
+        let got: Vec<_> = parse_countries(&resp).into_iter().map(|c| (c.code, c.name)).collect();
+        assert_eq!(got, [("ES".to_string(), "Spain".to_string()), ("AR".to_string(), "Argentina".to_string())]);
+
+        let moods = json!({ "contents": [{ "gridRenderer": {
+            "header": { "gridHeaderRenderer": { "title": { "runs": [{ "text": "Moods & moments" }] }}},
+            "items": [
+                { "musicNavigationButtonRenderer": {
+                    "buttonText": { "runs": [{ "text": "Chill" }] },
+                    "solid": { "leftStripeColor": 4288988671u64 },
+                    "clickCommand": { "browseEndpoint": { "browseId": "FEmusic_moods_and_genres_category", "params": "ggMPOg1uX1JOQWZFeDByc2Jm" }}
+                }},
+                { "musicNavigationButtonRenderer": { "buttonText": { "runs": [{ "text": "No params" }] }}}
+            ]
+        }}]});
+        let groups = parse_moods(&moods);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].title, "Moods & moments");
+        let m = &groups[0].moods;
+        assert_eq!(m.len(), 1);
+        assert_eq!((m[0].title.as_str(), m[0].params.as_str(), m[0].color.as_deref()), ("Chill", "ggMPOg1uX1JOQWZFeDByc2Jm", Some("#a4c5ff")));
+        assert!(!valid_params("a b"));
     }
 }

@@ -586,6 +586,25 @@ pub async fn artist(state: State<'_, AppState>, id: String) -> CmdResult<ytmusic
     ytmusic::artist(&state.http, &id).await
 }
 
+/// Search's Explore: charts for `country` (two letters, "ZZ" for Global; none
+/// for where the phone is), new releases, moods and genres.
+#[tauri::command]
+pub async fn explore(state: State<'_, AppState>, country: Option<String>) -> CmdResult<ytmusic::Explore> {
+    if country.as_ref().is_some_and(|c| !(c.len() == 2 && c.bytes().all(|b| b.is_ascii_uppercase()))) {
+        return Err("bad country".into());
+    }
+    ytmusic::explore(&state.http, country.as_deref()).await
+}
+
+/// A mood's or genre's playlists.
+#[tauri::command]
+pub async fn mood(state: State<'_, AppState>, params: String) -> CmdResult<Vec<ytmusic::Shelf>> {
+    if !ytmusic::valid_params(&params) {
+        return Err("bad mood".into());
+    }
+    ytmusic::mood(&state.http, &params).await
+}
+
 /// Songs like the `seeds` (YouTube track ids), mixed from each one's radio.
 /// Songs in `skip` (the seeds themselves, liked songs…) are left out.
 #[tauri::command]

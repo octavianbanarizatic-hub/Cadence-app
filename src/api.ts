@@ -129,6 +129,37 @@ export interface ArtistRef {
   thumbnail: string | null;
 }
 
+/** A playlist ("PL…", without "VL") or an album ("MPRE…") on an Explore shelf. */
+export interface Card {
+  id: string;
+  title: string;
+  sub: string | null;
+  thumbnail: string | null;
+}
+
+export interface Shelf {
+  title: string;
+  cards: Card[];
+}
+
+/** A Moods & genres tile; `params` opens its page. */
+export interface Mood {
+  title: string;
+  params: string;
+  /** "#rrggbb" */
+  color: string | null;
+}
+
+/** Search's Explore (ytmusic.rs): charts for one country ("ZZ" is Global), new releases, moods. */
+export interface Explore {
+  country: string;
+  countries: { code: string; name: string }[];
+  charts: Card[];
+  topArtists: ArtistRef[];
+  newReleases: Card[];
+  moods: { title: string; moods: Mood[] }[];
+}
+
 export interface Artist {
   id: string;
   name: string;
@@ -284,6 +315,10 @@ export const api = {
   downloadRemove: (id: string) => invoke<void>("download_remove", { id }),
   album: (id: string) => invoke<Album>("album", { id }),
   artist: (id: string) => invoke<Artist>("artist", { id }),
+  /** Without a country, the charts are for where the phone is. */
+  explore: (country: string | null) => invoke<Explore>("explore", { country }),
+  /** A mood's or genre's playlists. */
+  mood: (params: string) => invoke<Shelf[]>("mood", { params }),
   /** The songs with these YouTube ids, in order; ones YouTube doesn't know are left out. */
   songs: (ids: string[]) => invoke<Track[]>("songs", { ids }),
   /** Phones: opens Android's share sheet with a link to `item`. */

@@ -9,6 +9,8 @@ import {
   onAway,
   type AppUpdate,
   type Artist,
+  type Card,
+  type Explore,
   type AudioOutput,
   type BackupSummary,
   type DownloadItem,
@@ -50,8 +52,8 @@ type Page =
   | { kind: "playlist"; id: number }
   | { kind: "localAlbum"; album: string; artist: string }
   | { kind: "localArtist"; artist: string }
-  /** A genre from Search's Browse all. */
-  | { kind: "category"; name: string }
+  /** A mood or genre from Search's Explore: its playlists. */
+  | { kind: "mood"; title: string; params: string; color: string | null }
   /** A playlist someone shared, by its songs' YouTube ids. */
   | { kind: "shared"; name: string; ids: string[] }
   /** A playlist on YouTube, opened from a link shared to Cadence (or pasted into Search). */
@@ -274,6 +276,7 @@ function pageFor(target: string): Page | null {
   if (kind === "playlist") return { kind: "playlist", id: Number(rest) };
   if (kind === "mix") return { kind: "mix", index: Number(rest) };
   if (kind === "podcast") return { kind: "podcast", id: rest };
+  if (kind === "ytlist") return { kind: "ytlist", id: rest };
   if (kind === "lartist") return { kind: "localArtist", artist: rest };
   if (kind === "lalbum") {
     const [album, artist] = JSON.parse(rest) as [string, string];
@@ -1729,7 +1732,7 @@ function renderResults() {
   el.classList.toggle("dim", search.loading && search.results.length > 0 && search.tab === "songs");
 }
 
-// ---- search history and genres --------------------------------------------------
+// ---- search history ---------------------------------------------------------------
 
 /** Songs played from search results, newest first. */
 let recentSearches = settings.get<Track[]>("recentSearches", []);
@@ -1745,29 +1748,27 @@ function rememberSearch(track: Track) {
   settings.set("recentSearches", recentSearches);
 }
 
-/** Search's Browse all: each opens popular songs found with its query. */
-const GENRES = [
-  { name: "Pop", query: "pop hits", color: "oklch(0.56 0.19 350)" },
-  { name: "Hip-hop", query: "hip hop hits", color: "oklch(0.52 0.15 55)" },
-  { name: "Rap", query: "rap hits", color: "oklch(0.46 0.12 265)" },
-  { name: "Reggaeton", query: "reggaeton hits", color: "oklch(0.58 0.17 35)" },
-  { name: "Latin", query: "latin hits", color: "oklch(0.55 0.16 145)" },
-  { name: "Manele", query: "manele hits", color: "oklch(0.52 0.18 300)" },
-  { name: "Dance/Electronic", query: "dance electronic hits", color: "oklch(0.55 0.15 210)" },
-  { name: "Rock", query: "rock hits", color: "oklch(0.48 0.17 25)" },
-  { name: "R&B", query: "r&b hits", color: "oklch(0.5 0.14 320)" },
-  { name: "Romanian hits", query: "hituri romanesti", color: "oklch(0.55 0.14 250)" },
-  { name: "Chill", query: "chill songs", color: "oklch(0.55 0.1 185)" },
-  { name: "Party", query: "party songs", color: "oklch(0.58 0.2 15)" },
-  { name: "Workout", query: "workout songs", color: "oklch(0.56 0.16 120)" },
-  { name: "Throwbacks", query: "throwback hits 2000s", color: "oklch(0.55 0.12 80)" },
-];
+// ---- Explore: charts, new releases, moods and genres --------------------------------
 
-function genre(name: string) {
-  return GENRES.find((g) => g.name === name) ?? GENRES[0];
+/**
+ * Search's Explore, from YouTube Music, kept for the day. `country` is the one
+ * picked for the charts; null is where the phone is.
+ */
+let explore = settings.get<{ day: string; country: string | null; data: Explore | null }>("explore", { day: "", country: null, data: null });
+let exploring = false;
+let exploreError = "";
+
+/** An Explore card: a chart or mood playlist, or a new album or single. */
+function cardItem(c: Card) {
+  return { target: c.id.startsWith("MPRE") ? `album:${c.id}` : `ytlist:${c.id}`, art: imgUrl(c.thumbnail), title: c.title, sub: c.sub };
 }
 
-/** With nothing typed: recent searches, then genres to browse. */
+/** YouTube Music's tile colors are light; white text needs them darker. */
+function moodColor(color: string | null): string {
+  return `color-mix(in oklab, ${color ?? "oklch(0.55 0.1 265)"} 58%, black)`;
+}
+
+/** With nothing typed: recent searches, then Explore. */
 function renderBrowse(el: HTMLElement) {
   const recent = recentSearches;
   el.innerHTML = `${
@@ -1776,8 +1777,7 @@ function renderBrowse(el: HTMLElement) {
         <div class="track-list" id="recent-list"></div>`
       : ""
   }
-    <div class="browse-head"><h2>Browse all</h2></div>
-    <div class="genres">${GENRES.map((g) => `<button class="genre" data-genre="${esc(g.name)}" style="--genre: ${g.color}">${esc(g.name)}</button>`).join("")}</div>`;
+    <div id="explore"></div>`;
   if (recent.length) {
     const forget = (i: number) => setRecentSearches(recentSearches.filter((t) => t.id !== recent[i].id));
     mountTrackList($("#recent-list"), recent, {
@@ -1791,10 +1791,98 @@ function renderBrowse(el: HTMLElement) {
       toast("Recent searches cleared", "info", { label: "Undo", run: () => setRecentSearches(recent) });
     };
   }
-  el.querySelector(".genres")!.addEventListener("click", (e) => {
-    const name = (e.target as HTMLElement).closest<HTMLElement>("[data-genre]")?.dataset.genre;
-    if (name) openPage({ kind: "category", name });
-  });
+  drawExplore();
+  void loadExplore();
+}
+
+/** Fetches Explore once a day, or for another chart country. */
+async function loadExplore() {
+  const day = new Date().toDateString();
+  const country = settings.get<string | null>("chartCountry", null);
+  if ((explore.data && explore.day === day && explore.country === country) || exploring) return;
+  exploring = true;
+  exploreError = "";
+  drawExplore();
+  try {
+    explore = { day, country, data: await api.explore(country) };
+    settings.set("explore", explore);
+  } catch (e) {
+    // Offline, say: keep what was there.
+    exploreError = String(e);
+  } finally {
+    exploring = false;
+  }
+  // Another country picked while this one loaded: that one next.
+  if (!exploreError && settings.get<string | null>("chartCountry", null) !== country) return void loadExplore();
+  drawExplore();
+}
+
+function drawExplore() {
+  const el = document.getElementById("explore");
+  if (!el) return;
+  const data = explore.data;
+  // A country picked just now shows its charts once they've come.
+  const fresh = data && explore.country === settings.get<string | null>("chartCountry", null);
+  if (!data) {
+    el.innerHTML = exploring
+      ? `<div class="explore-wait">${spinner(26)}</div>`
+      : emptyState("search", "Couldn't load Explore", esc(exploreError));
+    return;
+  }
+  const place = data.countries.find((c) => c.code === data.country)?.name ?? "Global";
+  const pick = `<button class="explore-country" id="explore-country" ${exploring && !fresh ? "disabled" : ""}>${esc(place)}${icon("chevronDown", 16)}</button>`;
+  const artists = data.topArtists.map((a) => ({ target: `artist:${a.id}`, art: imgUrl(a.thumbnail), title: a.name }));
+  el.innerHTML =
+    // With no charts the country button still shows, to pick another.
+    (cards("Charts", data.charts.map(cardItem), false, true, pick) || `<div class="section-head"><h2>Charts</h2>${pick}</div>`) +
+    cards(`Top artists${place === "Global" ? "" : ` in ${esc(place)}`}`, artists, true, true) +
+    cards("New releases", data.newReleases.map(cardItem), false, true) +
+    data.moods
+      .map(
+        (g, gi) => `<div class="browse-head"><h2>${esc(g.title)}</h2></div>
+        <div class="genres">${g.moods.map((m, i) => `<button class="genre" data-mood="${gi}:${i}" style="--genre: ${moodColor(m.color)}">${esc(m.title)}</button>`).join("")}</div>`,
+      )
+      .join("");
+  el.onclick = (e) => {
+    const target = e.target as HTMLElement;
+    const mood = target.closest<HTMLElement>("[data-mood]")?.dataset.mood;
+    if (mood) {
+      const [g, i] = mood.split(":").map(Number);
+      const m = data.moods[g]?.moods[i];
+      if (m) openPage({ kind: "mood", title: m.title, params: m.params, color: m.color });
+    } else if (target.closest("#explore-country")) {
+      pickChartCountry(e, target.closest("#explore-country")!, data);
+    }
+  };
+}
+
+/** The charts' country: where the phone is, Global, or any YouTube Music has charts for. */
+function pickChartCountry(e: MouseEvent, button: HTMLElement, data: Explore) {
+  const chosen = settings.get<string | null>("chartCountry", null);
+  const here = data.countries[0];
+  const set = (code: string | null) => {
+    settings.set("chartCountry", code);
+    void loadExplore();
+  };
+  const others = data.countries
+    .filter((c) => c.code !== "ZZ")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c): MenuItem => ({ label: c.name, icon: chosen === c.code ? "check" : undefined, run: () => set(c.code) }));
+  // The country picked comes first too, so it needn't be looked for among seventy.
+  const picked = data.countries.find((c) => c.code === chosen && c.code !== "ZZ");
+  // Under the button: the click was caught by the whole of Explore.
+  e.stopPropagation();
+  const r = button.getBoundingClientRect();
+  showMenu(
+    [
+      ...(here ? [{ label: `Where you are (${here.name})`, icon: chosen === null ? "check" : undefined, run: () => set(null) } satisfies MenuItem] : []),
+      { label: "Global", icon: chosen === "ZZ" ? "check" : undefined, run: () => set("ZZ") },
+      ...(picked ? [{ label: picked.name, icon: "check", run: () => set(picked.code) } satisfies MenuItem] : []),
+      ...others.map((m, i) => (i === 0 ? { ...m, divider: true } : m)),
+    ],
+    r.left,
+    r.bottom + 6,
+  );
 }
 
 /** Placeholder rows while a list loads, shaped like songs. */
@@ -2622,11 +2710,14 @@ function bindHero(tracks: Track[], from: string) {
   });
 }
 
-/** Album or artist cards in a grid, or with `row` in one row that scrolls sideways. */
-function cards(title: string, items: { target: string; art: string | null; title: string; sub?: string | null; badge?: string }[], round = false, row = false): string {
+/**
+ * Album or artist cards in a grid, or with `row` in one row that scrolls
+ * sideways. `action` is a button beside the title.
+ */
+function cards(title: string, items: { target: string; art: string | null; title: string; sub?: string | null; badge?: string }[], round = false, row = false, action = ""): string {
   if (!items.length) return "";
   return `<section class="page-section">
-    <h2>${title}</h2>
+    ${action ? `<div class="section-head"><h2>${title}</h2>${action}</div>` : `<h2>${title}</h2>`}
     <div class="cards ${row ? "row" : ""}">${items
       .map(
         (c) => `<button class="card ${round ? "round" : ""}" data-go="${esc(c.target)}" title="${esc(c.title)}">
@@ -2668,16 +2759,14 @@ function bindBack() {
 /** A page's markup, plus the step that brings its lists to life. */
 async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }> {
   const list = `<div class="track-list" id="page-list"></div>`;
-  if (p.kind === "category") {
-    const g = genre(p.name);
-    // Hour-long mixes crowd out the songs themselves.
-    const tracks = (await api.search(g.query)).filter((t) => !t.duration || t.duration <= 600);
+  if (p.kind === "mood") {
+    const shelves = await api.mood(p.params);
+    const lists = shelves.reduce((n, s) => n + s.cards.length, 0);
     return {
-      markup: hero({ art: null, fallback: "music", label: "Browse", title: g.name, meta: count(tracks.length, "song"), tracks }) + list,
-      mount: () => {
-        mountTrackList($("#page-list"), tracks, { from: g.name });
-        bindHero(tracks, g.name);
-      },
+      markup:
+        hero({ art: null, fallback: "music", label: "Browse", title: p.title, meta: count(lists, "playlist"), tracks: [] }) +
+        shelves.map((s) => cards(esc(s.title), s.cards.map(cardItem), false, true)).join(""),
+      mount: () => {},
     };
   }
   if (p.kind === "podcast") {
@@ -5710,8 +5799,8 @@ async function artColor(url: string): Promise<[number, number, number] | null> {
 async function tintPage(token: number) {
   const view = $("#view");
   view.style.removeProperty("--page-art");
-  // A genre has no cover; it glows with its tile's color.
-  if (page?.kind === "category") return view.style.setProperty("--page-art", genre(page.name).color);
+  // A mood has no cover; it glows with its tile's color.
+  if (page?.kind === "mood") return view.style.setProperty("--page-art", moodColor(page.color));
   const src = view.querySelector<HTMLImageElement>(".hero-art img")?.src;
   const color = src ? await artColor(src) : null;
   if (color && token === pageToken) view.style.setProperty("--page-art", `rgb(${color.join(", ")})`);

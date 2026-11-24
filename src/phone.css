@@ -293,7 +293,7 @@
 }
 
 /* Album, artist and playlist headers glow with their cover's color. */
-:is(.phone, .desktop) .main:is([data-view="playlist"], [data-view="album"], [data-view="artist"], [data-view="localAlbum"], [data-view="localArtist"], [data-view="category"], [data-view="shared"], [data-view="ytlist"], [data-view="mix"]) {
+:is(.phone, .desktop) .main:is([data-view="playlist"], [data-view="album"], [data-view="artist"], [data-view="localAlbum"], [data-view="localArtist"], [data-view="mood"], [data-view="shared"], [data-view="ytlist"], [data-view="mix"]) {
   background:
     radial-gradient(110% 520px at 25% 0, color-mix(in oklab, var(--page-art, var(--art)) 34%, var(--bg)), var(--bg) 75%) local no-repeat,
     var(--bg);
@@ -1915,12 +1915,54 @@
   transition-duration: 0.09s;
 }
 
-/* A genre's page: its color in place of a cover. */
-:is(.phone, .desktop) .main[data-view="category"] .hero-art {
+/* Explore: a card row's title with a button beside it (the charts' country). */
+:is(.phone, .desktop) .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:is(.phone, .desktop) .section-head h2 {
+  min-width: 0;
+}
+
+:is(.phone, .desktop) .explore-country {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 55%;
+  height: 32px;
+  margin-top: 16px;
+  padding: 0 10px 0 14px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+:is(.phone, .desktop) .explore-country:disabled {
+  opacity: 0.5;
+}
+
+:is(.phone, .desktop) .explore-wait {
+  display: grid;
+  place-items: center;
+  padding: 48px 0;
+  color: var(--text-3);
+}
+
+/* A mood or genre page: its color in place of a cover. */
+:is(.phone, .desktop) .main[data-view="mood"] .hero-art {
   background: linear-gradient(135deg, var(--page-art), color-mix(in oklab, var(--page-art) 55%, black));
 }
 
-:is(.phone, .desktop) .main[data-view="category"] .hero-art .art-fallback {
+:is(.phone, .desktop) .main[data-view="mood"] .hero-art .art-fallback {
   color: oklch(0.98 0.005 265 / 0.85);
 }
 

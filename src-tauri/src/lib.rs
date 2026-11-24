@@ -232,6 +232,8 @@ pub fn run() {
             commands::open_link,
             commands::image_save,
             commands::artist,
+            commands::explore,
+            commands::mood,
             commands::recommendations,
             commands::playlists_list,
             commands::playlist_get,
