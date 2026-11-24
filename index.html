@@ -76,6 +76,8 @@
         <button class="icon-btn np-close" id="np-close" title="Close" data-icon="chevronDown"></button>
         <div class="np-from" id="np-from"><span>Playing from</span><b></b></div>
         <button class="icon-btn np-more" id="np-more" title="More" data-icon="more"></button>
+        <!-- The player's first screen; phones scroll past it to .np-info. -->
+        <div class="np-main">
         <div class="now">
           <div class="now-art" id="now-art"></div>
           <div class="now-text">
@@ -101,9 +103,10 @@
             <span class="time" id="time-dur">0:00</span>
           </div>
         </div>
-        <!-- Phones: where the music plays; tapping picks another place. -->
-        <button class="np-out" id="np-out" hidden></button>
         <div class="extras">
+          <!-- Phones: where the music plays; tapping picks another place. -->
+          <button class="icon-btn small np-out" id="np-out" hidden></button>
+          <button class="icon-btn small np-share" id="np-share" title="Share" data-icon="share"></button>
           <button class="icon-btn small toggle" id="btn-eq" title="Equalizer" data-icon="eq"><span class="lbl">Equalizer</span></button>
           <button class="icon-btn small toggle" id="btn-lyrics" title="Lyrics (L)" data-icon="lyrics"><span class="lbl">Lyrics</span></button>
           <button class="icon-btn small toggle" id="btn-now" title="Now playing view" data-icon="nowPlaying"></button>
@@ -111,6 +114,19 @@
           <button class="icon-btn small" id="btn-mini" title="Mini player" data-icon="miniPlayer"></button>
           <button class="icon-btn small" id="btn-mute" title="Mute"></button>
           <input type="range" class="slider volume" id="volume" min="0" max="100" step="1" aria-label="Volume" />
+        </div>
+        </div>
+        <!-- Phones: below the full-screen player, the song's lyrics and its artist. -->
+        <div class="np-info" id="np-info">
+          <section class="np-card np-lyrics" id="np-lyrics" hidden>
+            <h3>Lyrics</h3>
+            <div class="np-lyrics-box"><div class="np-lyrics-lines" id="np-lyrics-lines"></div></div>
+          </section>
+          <section class="np-card np-artist" id="np-artist" hidden></section>
+          <section class="np-more-by" id="np-more-by" hidden>
+            <h3 id="np-more-title"></h3>
+            <div class="track-list" id="np-more-list"></div>
+          </section>
         </div>
       </footer>
 

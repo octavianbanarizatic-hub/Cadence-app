@@ -63,6 +63,8 @@
 .now-out,
 .now-device,
 .np-out,
+.np-share,
+.np-info,
 .panel-close,
 .panel-back,
 .q-transport,
@@ -74,6 +76,12 @@
 .np-bars,
 .pull {
   display: none;
+}
+
+/* The full-screen player's first screen on phones (phone.css); everywhere
+   else its parts lay out as if it weren't there. */
+.np-main {
+  display: contents;
 }
 
 /* ---- tokens ------------------------------------------------------------------ */
@@ -2244,8 +2252,7 @@
   flex: none;
 }
 
-.phone .now-device span,
-.phone .np-out span {
+.phone .now-device span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2312,10 +2319,13 @@
   padding: 72px 24px var(--nav-bottom);
   border-radius: 0;
   box-shadow: none;
-  /* A cover swiped aside leaves the screen instead of widening the page. */
-  overflow: hidden;
-  /* Sideways swipes skip, downward drags close; both are handled in main.ts. */
-  touch-action: none;
+  /* It scrolls down to the cards below the player (.np-info). A cover
+     swiped aside leaves the screen instead of widening the page. */
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  /* Sideways swipes skip, and a downward drag at the top closes it; both are
+     handled in main.ts. */
+  touch-action: pan-y;
   background:
     radial-gradient(120% 60% at 50% 18%, color-mix(in oklab, var(--art) 36%, var(--bg)) 0%, var(--bg) 72%),
     var(--bg);
@@ -2385,19 +2395,29 @@
   text-overflow: ellipsis;
 }
 
+/* The first screen: cover, song, controls and the icon row fill it, spread
+   out on tall phones; the cards start just below. */
+.phone .player.expanded .np-main {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100%;
+  padding-top: clamp(0px, 2vh, 24px);
+}
+
 .phone .player.expanded .now {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas: "art art art" "text like dl";
   align-items: start;
-  gap: 26px 2px;
+  gap: clamp(26px, 5vh, 52px) 2px;
 }
 
 .phone .player.expanded .now-art {
   grid-area: art;
   justify-self: center;
-  /* Short screens shrink it to leave room for the line saying where the music plays. */
-  width: min(100%, calc(46vh - 18px));
+  width: min(100%, 46vh);
   height: auto;
   aspect-ratio: 1;
   border-radius: 20px;
@@ -2502,7 +2522,7 @@
 .phone .player.expanded .transport {
   flex-direction: column-reverse;
   align-items: stretch;
-  gap: 10px;
+  gap: clamp(10px, 2.5vh, 26px);
   margin-top: 22px;
 }
 
@@ -2604,81 +2624,228 @@
   border-top-color: var(--text);
 }
 
-/* Where the music plays, on its own line above Queue, Lyrics and Equalizer;
-   red when it isn't the phone. Tapping it opens Android's panel. */
+/* Icons along the bottom, like Spotify: where the music plays on the left
+   (red, with the device's name, when it isn't the phone; tapping it opens
+   Android's panel), then Share, Equalizer and Queue on the right. Lyrics
+   are the card below. The icons' edges line up with the cover's. */
+.phone .player.expanded .extras {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 18px -14px 0;
+}
+
+.phone .player.expanded .extras .icon-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  color: var(--text);
+}
+
+.phone .player.expanded .extras .icon-btn .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.phone .player.expanded #btn-lyrics {
+  display: none;
+}
+
 .phone .player.expanded .np-out:not([hidden]) {
   display: flex;
-  align-self: center;
-  align-items: center;
+  flex: 0 1 auto;
   gap: 8px;
-  max-width: 100%;
-  height: 44px;
-  margin-top: auto;
-  padding: 0 14px;
-  color: var(--text-2);
+  width: auto;
+  min-width: 48px;
+  margin-right: auto;
+  padding: 0 12px;
   font-family: var(--mono);
   font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .phone .player.expanded .np-out.away {
   color: var(--red);
 }
 
-.phone .np-out .icon {
+.phone .player.expanded .np-out span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .player.expanded .np-out .icon {
   flex: none;
-  width: 18px;
-  height: 18px;
 }
 
-.phone .player.expanded .np-out:not([hidden]) + .extras {
-  margin-top: 0;
+/* With no output known yet, Share takes the left edge's place in the row. */
+.phone .player.expanded .np-out[hidden] + .np-share {
+  margin-left: auto;
 }
 
-/* Queue, Lyrics and Equalizer along the bottom. */
-/* Spread evenly: Queue at the left edge, Equalizer at the right, and the
-   same space on both sides of Lyrics. */
-.phone .player.expanded .extras {
-  display: flex;
-  justify-content: space-between;
-  gap: 0;
-  margin: auto -24px 0;
-  padding: 0 24px;
-}
-
-.phone .player.expanded .extras .icon-btn {
-  display: flex;
-  align-items: center;
-  width: auto;
-  height: 56px;
-  gap: 8px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.phone .player.expanded .extras .icon-btn .icon {
-  width: 20px;
-  height: 20px;
-}
-
-.phone .extras .lbl {
-  display: inline;
-}
-
-.phone #btn-queue {
+.phone .np-share {
   order: 1;
 }
 
-.phone #btn-lyrics {
+.phone #btn-eq {
   order: 2;
 }
 
-.phone #btn-eq {
+.phone #btn-queue {
   order: 3;
+}
+
+/* ---- below the full-screen player: lyrics and the artist ---------------------- */
+
+.phone .player.expanded .np-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 0 32px;
+}
+
+.phone .np-info [hidden] {
+  display: none;
+}
+
+/* No cards (a podcast, a song with neither lyrics nor artist, or still
+   loading): nothing to scroll to. */
+.phone .player.expanded .np-info:not(:has(> :not([hidden]))) {
+  padding: 0;
+}
+
+.phone .np-card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.phone .np-info h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* The lyrics in the song's own colour; the line being sung stays second
+   from the top. Tapping opens them full screen. */
+.phone .np-lyrics {
+  padding: 16px 18px 6px;
+  background: color-mix(in oklab, var(--art) 55%, var(--surface-2));
+  cursor: pointer;
+}
+
+.phone .np-lyrics-box {
+  position: relative;
+  height: 196px;
+  margin-top: 12px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+}
+
+.phone .np-lyrics-lines {
+  transition: translate 0.45s var(--ease);
+}
+
+.phone .np-lyrics-lines p {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: color-mix(in oklab, var(--text) 42%, transparent);
+  transition: color 0.3s;
+}
+
+.phone .np-lyrics-lines p.past {
+  color: color-mix(in oklab, var(--text) 72%, transparent);
+}
+
+.phone .np-lyrics-lines p.active,
+.phone .np-lyrics.plain .np-lyrics-lines p {
+  color: var(--text);
+}
+
+/* About the artist: their photo, name, audience, Follow and the bio. */
+.phone .np-artist-photo {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--surface-3);
+}
+
+.phone .np-artist-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phone .np-artist-photo h3 {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  text-shadow: 0 1px 12px oklch(0 0 0 / 0.6);
+}
+
+.phone .np-artist-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.phone .np-artist-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.phone .np-artist-name b {
+  font-size: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone .np-artist-name span {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.phone .np-follow {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 17px;
+}
+
+.phone .np-follow.on {
+  border-color: var(--text-2);
+  color: var(--text-2);
+}
+
+/* Three lines of the bio; a tap shows all of it. */
+.phone .np-bio {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.phone .np-bio.open {
+  display: block;
+}
+
+.phone .np-more-by h3 {
+  margin: 8px 0 6px;
 }
 
 /* Phones set the volume with their own buttons; the mini player and the

@@ -8,6 +8,7 @@ import {
   formatTime,
   onAway,
   type AppUpdate,
+  type Artist,
   type AudioOutput,
   type BackupSummary,
   type DownloadItem,
@@ -290,6 +291,9 @@ interface ListOptions {
   single?: boolean;
   /** Gives each row an X that removes it from the list. */
   remove?: { title: string; run: (index: number) => void };
+  /** A short list outside the page (under the full-screen player): it doesn't
+   *  take over the page's paging, and its songs aren't looked up ahead. */
+  aside?: boolean;
 }
 
 /** Renders `tracks` into `el`; clicking a row plays the list from that row. */
@@ -300,7 +304,7 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
   // Phones move songs by a handle on each row (touch screens don't drag and drop).
   const handles = phone && Boolean(opts.reorder);
   el.classList.toggle("sortable", handles);
-  loadMoreRows = () => {
+  const more = () => {
     // Keep adding pages until the list reaches well below the visible area.
     while (shown < tracks.length && el.isConnected) {
       const bottom = el.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
@@ -311,10 +315,11 @@ function mountTrackList(el: HTMLElement, tracks: Track[], opts: ListOptions = {}
     if (opts.reorder && !phone) el.querySelectorAll(".track").forEach((r) => r.setAttribute("draggable", "true"));
     markPlaying();
   };
-  loadMoreRows();
+  if (!opts.aside) loadMoreRows = more;
+  more();
   // Phones have no hover to start lookups early: look up the first few songs
   // now (fewer on mobile data, as each lookup costs some).
-  if (phone) {
+  if (phone && !opts.aside) {
     void api
       .unmetered()
       .catch(() => false)
@@ -765,7 +770,12 @@ function markNav() {
 
 /** The full-screen player, opened from the bar above the tabs. */
 function setNowPlayingOpen(open: boolean) {
-  $(".player").classList.toggle("expanded", open && phone);
+  const bar = $(".player");
+  const opening = open && phone && !bar.classList.contains("expanded");
+  bar.classList.toggle("expanded", open && phone);
+  // It opens at the top, with the cards below for the song playing now.
+  if (opening || !open) bar.scrollTop = 0;
+  if (opening) renderNpInfo();
 }
 
 /** Android's back button: closes whatever is on top. Returns false when
@@ -931,40 +941,61 @@ function bindSwipeToSkip() {
 }
 
 /**
- * Dragging the open player down closes it. It follows the finger until it is
- * let go, then closes if it went down far enough (or was flung), or springs back.
+ * Dragging the open player down closes it, when it is scrolled to the top
+ * (further down, the finger scrolls back up). It follows the finger until it
+ * is let go, then closes if it went down far enough (or was flung), or
+ * springs back. Touch events, not pointer ones: only a cancelled touchmove
+ * keeps the page from scrolling instead.
  */
 function bindDragToClose() {
   const bar = $(".player");
-  let drag: { id: number; x: number; y: number; on: boolean; lastY: number; lastT: number; speed: number } | null = null;
-  bar.addEventListener("pointerdown", (e) => {
-    drag = null;
-    if (e.pointerType !== "touch" || !bar.classList.contains("expanded")) return;
-    if ((e.target as HTMLElement).closest("button, input, .extras")) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, lastY: e.clientY, lastT: e.timeStamp, speed: 0 };
-  });
-  bar.addEventListener("pointermove", (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x;
-    const dy = e.clientY - drag.y;
-    if (!drag.on) {
-      // Sideways is the cover's swipe to skip.
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) drag = null;
-      if (!drag || dy < 10) return;
-      drag.on = true;
-    }
-    if (e.timeStamp > drag.lastT) drag.speed = (e.clientY - drag.lastY) / (e.timeStamp - drag.lastT);
-    drag.lastY = e.clientY;
-    drag.lastT = e.timeStamp;
-    bar.style.translate = `0 ${Math.max(0, dy)}px`;
-  });
-  const end = (e: PointerEvent) => {
-    if (!drag || e.pointerId !== drag.id) return;
+  let drag: { x: number; y: number; on: boolean; lastY: number; lastT: number; speed: number } | null = null;
+  bar.addEventListener(
+    "touchstart",
+    (e) => {
+      drag = null;
+      if (!bar.classList.contains("expanded") || e.touches.length > 1 || bar.scrollTop > 0) return;
+      if ((e.target as HTMLElement).closest("button, input, .extras")) return;
+      const t = e.touches[0];
+      drag = { x: t.clientX, y: t.clientY, on: false, lastY: t.clientY, lastT: e.timeStamp, speed: 0 };
+    },
+    { passive: true },
+  );
+  bar.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!drag) return;
+      const t = e.touches[0];
+      const dx = t.clientX - drag.x;
+      const dy = t.clientY - drag.y;
+      if (!drag.on) {
+        // Up scrolls to the cards below; sideways is the cover's swipe to skip.
+        if (dy < 0 || (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy))) {
+          drag = null;
+          return;
+        }
+        // Held from the first clear move down, or the page would start
+        // scrolling; a finger's wobble of a pixel or two is let through.
+        if (dy >= 3 && e.cancelable) e.preventDefault();
+        if (dy < 10) return;
+        drag.on = true;
+      }
+      if (e.cancelable) e.preventDefault();
+      if (e.timeStamp > drag.lastT) drag.speed = (t.clientY - drag.lastY) / (e.timeStamp - drag.lastT);
+      drag.lastY = t.clientY;
+      drag.lastT = e.timeStamp;
+      bar.style.translate = `0 ${Math.max(0, dy)}px`;
+    },
+    { passive: false },
+  );
+  const end = (e: TouchEvent) => {
+    if (!drag) return;
     const d = drag;
     drag = null;
     if (!d.on) return;
     swipedAt = performance.now();
-    const close = e.type === "pointerup" && (e.clientY - d.y > bar.offsetHeight * 0.3 || d.speed > 0.6);
+    const y = e.changedTouches[0]?.clientY ?? d.lastY;
+    const close = e.type === "touchend" && (y - d.y > bar.offsetHeight * 0.3 || d.speed > 0.6);
     bar.classList.add("settling");
     bar.style.translate = close ? `0 ${bar.offsetHeight}px` : "";
     setTimeout(
@@ -976,8 +1007,8 @@ function bindDragToClose() {
       close ? 240 : 200,
     );
   };
-  bar.addEventListener("pointerup", end);
-  bar.addEventListener("pointercancel", end);
+  bar.addEventListener("touchend", end);
+  bar.addEventListener("touchcancel", end);
 }
 
 /** Home: pulling the page down brings new recommendations. */
@@ -1059,8 +1090,8 @@ const OUTPUTS: Record<AudioOutput["kind"], { label: string; icon: IconName }> = 
 
 /**
  * Shows where the music plays. Somewhere else than the phone, its name goes
- * in red under the song in the small bar (like Spotify); the full-screen
- * player always says where, on its own line above Queue, Lyrics and Equalizer.
+ * in red under the song in the small bar (like Spotify), and the devices
+ * icon in the full-screen player's bottom row turns red with the name beside it.
  */
 function showOutput(out: AudioOutput) {
   const kind = OUTPUTS[out.kind] ?? OUTPUTS.speaker;
@@ -1076,7 +1107,7 @@ function showOutput(out: AudioOutput) {
     button.classList.toggle("away", away);
     button.title = `Playing on ${out.name || kind.label.toLowerCase()}`;
   }
-  $("#np-out").innerHTML = `${icon(kind.icon, 18)}<span>${name}</span>`;
+  $("#np-out").innerHTML = icon("devices", 24) + (away ? `<span>${name}</span>` : "");
 }
 
 function bindPhone() {
@@ -1112,6 +1143,7 @@ function bindPhone() {
   });
   bindSwipeToSkip();
   bindDragToClose();
+  bindNpInfo();
   bindPullToRefresh();
   $(".brand").innerHTML = `${mark(28)}<span>cadence</span>`;
   $("#queue-panel h2").textContent = "Queue";
@@ -4923,6 +4955,152 @@ function bindLyrics() {
   bindLyricsCards();
 }
 
+// ---- below the full-screen player (phones) -----------------------------------------
+
+/** Artist pages for "About the artist", looked up once per session. */
+const npArtists = new Map<string, Promise<Artist | null>>();
+/** What the cards under the full-screen player show: the song, its synced
+ *  lyrics and the line the lyrics card is on. */
+const npInfo = { trackId: "", lines: null as LyricLine[] | null, active: -2 };
+
+function npOpen(): boolean {
+  return phone && $(".player").classList.contains("expanded");
+}
+
+/** Fills the cards under the full-screen player for the playing song, once
+ *  per song while the player is open: lyrics, the artist and more of their songs. */
+function renderNpInfo() {
+  const t = player.current;
+  if (!npOpen() || !t) return;
+  if (t.id === npInfo.trackId) {
+    // The artist may have been followed on their page since.
+    const follow = $("#np-artist").querySelector<HTMLElement>(".np-follow");
+    if (follow) setNpFollow(follow, following.some((f) => f.id === follow.dataset.id));
+    return syncNpLyrics();
+  }
+  npInfo.trackId = t.id;
+  npInfo.lines = null;
+  npInfo.active = -2;
+  for (const id of ["#np-lyrics", "#np-artist", "#np-more-by"]) $(id).hidden = true;
+  if (isEpisode(t)) return;
+  void npLyrics(t);
+  void npArtist(t);
+}
+
+async function npLyrics(t: Track) {
+  let lyrics = lyricsCache.get(t.id);
+  if (lyrics === undefined) {
+    try {
+      lyrics = await api.lyrics(t);
+      lyricsCache.set(t.id, lyrics);
+    } catch {
+      // Offline, say: opening the player again tries again.
+      if (npInfo.trackId === t.id) npInfo.trackId = "";
+      return;
+    }
+  }
+  if (npInfo.trackId !== t.id || !lyrics) return;
+  const synced = lyrics.synced?.length ? lyrics.synced : null;
+  // Plain lyrics lose their blank lines; synced ones keep each line's place.
+  const lines = synced ? synced.map((l) => l.text) : (lyrics.plain ?? "").split("\n").filter((l) => l.trim());
+  if (!lines.some((l) => l.trim())) return;
+  npInfo.lines = synced;
+  npInfo.active = -2;
+  const box = $("#np-lyrics-lines");
+  box.style.translate = "";
+  box.innerHTML = lines.map((l) => `<p>${esc(l) || "♪"}</p>`).join("");
+  // Lyrics without times don't follow the song: all of them are lit.
+  $("#np-lyrics").classList.toggle("plain", !synced);
+  $("#np-lyrics").hidden = false;
+  syncNpLyrics();
+}
+
+/** Moves the lyrics card along with the song: the line being sung stays
+ *  second from the top, the ones before it lit, the ones to come dim. */
+function syncNpLyrics() {
+  const lines = npInfo.lines;
+  if (!lines || !npOpen() || $("#np-lyrics").hidden) return;
+  const i = lyricIndexAt(lines, player.audio.currentTime);
+  if (i === npInfo.active) return;
+  npInfo.active = i;
+  const box = $("#np-lyrics-lines");
+  const rows = box.children;
+  for (let j = 0; j < rows.length; j++) {
+    rows[j].classList.toggle("active", j === i);
+    rows[j].classList.toggle("past", j < i);
+  }
+  const top = rows[Math.max(i - 1, 0)] as HTMLElement | undefined;
+  box.style.translate = `0 ${-(top?.offsetTop ?? 0)}px`;
+}
+
+function npArtistPage(id: string): Promise<Artist | null> {
+  let page = npArtists.get(id);
+  if (!page) {
+    // A failed lookup is tried again the next time.
+    page = api.artist(id).catch(() => (npArtists.delete(id), null));
+    npArtists.set(id, page);
+  }
+  return page;
+}
+
+async function npArtist(t: Track) {
+  const id = t.artists?.find((a) => a.id)?.id ?? t.artistId;
+  if (!id) return;
+  const a = await npArtistPage(id);
+  if (npInfo.trackId !== t.id) return;
+  if (!a) {
+    npInfo.trackId = "";
+    return;
+  }
+  const go = `data-go="artist:${esc(a.id)}"`;
+  const on = following.some((f) => f.id === a.id);
+  const photo = imgUrl(a.thumbnail);
+  const card = $("#np-artist");
+  card.innerHTML = `<div class="np-artist-photo" ${go}>${photo ? `<img src="${esc(photo)}" alt="" draggable="false" />` : ""}<h3>About the artist</h3></div>
+    <div class="np-artist-body">
+      <div class="np-artist-name" ${go}><b>${esc(a.name)}</b>${a.audience ? `<span>${esc(a.audience)}</span>` : ""}</div>
+      <button class="btn outline np-follow" data-id="${esc(a.id)}"></button>
+      ${a.description ? `<p class="np-bio">${esc(a.description)}</p>` : ""}
+    </div>`;
+  const follow = card.querySelector<HTMLElement>(".np-follow")!;
+  setNpFollow(follow, on);
+  follow.onclick = () => {
+    const now = !following.some((f) => f.id === a.id);
+    setFollow({ id: a.id, name: a.name, thumbnail: a.thumbnail }, now);
+    setNpFollow(follow, now);
+    toast(now ? `Following ${a.name}` : `Stopped following ${a.name}`);
+  };
+  card.hidden = false;
+  const songs = a.topSongs.filter((s) => s.id !== t.id).slice(0, 5);
+  if (!songs.length) return;
+  $("#np-more-title").textContent = `More by ${a.name}`;
+  mountTrackList($("#np-more-list"), songs, { from: a.name, aside: true });
+  $("#np-more-by").hidden = false;
+}
+
+function setNpFollow(btn: HTMLElement, on: boolean) {
+  btn.classList.toggle("on", on);
+  btn.textContent = on ? "Following" : "Follow";
+}
+
+function bindNpInfo() {
+  // The lyrics card opens the lyrics full screen.
+  $("#np-lyrics").onclick = () => toggleSidePanel("lyrics");
+  $("#np-info").addEventListener("click", (e) => {
+    const el = e.target as HTMLElement;
+    if (el.closest(".track")) return;
+    const go = el.closest<HTMLElement>("[data-go]")?.dataset.go;
+    if (go) openTarget(go);
+    else el.closest(".np-bio")?.classList.toggle("open");
+  });
+  $("#np-share").onclick = () => {
+    const t = player.current;
+    if (!t) return;
+    if (!t.id.startsWith("yt:")) return toast("Only songs from YouTube Music can be shared", "error");
+    void share({ kind: "song", id: t.id.slice(3), title: t.title, artist: t.artist });
+  };
+}
+
 // ---- lyrics cards ----------------------------------------------------------------
 
 /** Lyric lines picked for a card, by their place in the lyrics. */
@@ -5448,6 +5626,7 @@ function bindPlayerBar() {
     // Otherwise the last song's time shows until the new one reports in.
     updateTime();
     void loadLyrics();
+    renderNpInfo();
     sendMiniState();
   });
   player.addEventListener("state", () => {
@@ -5460,6 +5639,7 @@ function bindPlayerBar() {
     sendMiniState();
     // Covers seeking while paused; during playback the frame loop does this.
     syncLyrics();
+    syncNpLyrics();
   });
   player.addEventListener("queue", () => {
     renderQueue();

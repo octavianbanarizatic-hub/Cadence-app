@@ -363,6 +363,10 @@ pub struct Artist {
     pub id: String,
     pub name: String,
     pub thumbnail: Option<String>,
+    /// The artist's bio, as YouTube Music has it.
+    pub description: Option<String>,
+    /// "129M monthly audience".
+    pub audience: Option<String>,
     pub top_songs: Vec<Track>,
     pub albums: Vec<Release>,
     pub singles: Vec<Release>,
@@ -569,10 +573,15 @@ fn parse_artist(id: &str, resp: &Value) -> Option<Artist> {
             _ => {}
         }
     }
+    let some = |s: String| Some(s.trim().to_string()).filter(|s| !s.is_empty());
     Some(Artist {
         id: id.to_string(),
         name,
         thumbnail: biggest_thumbnail(&header["thumbnail"]),
+        // Some pages keep the bio in a shelf of its own instead.
+        description: some(text(&header["description"]))
+            .or_else(|| some(text(&first(resp, "musicDescriptionShelfRenderer")?["description"]))),
+        audience: some(text(&header["monthlyListenerCount"])),
         top_songs,
         albums,
         singles,
@@ -640,7 +649,11 @@ mod tests {
             "contents": items
         }});
         let resp = json!({
-            "header": { "musicImmersiveHeaderRenderer": { "title": { "runs": [{ "text": "Daft Punk" }] }}},
+            "header": { "musicImmersiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Daft Punk" }] },
+                "description": { "runs": [{ "text": "Daft Punk were a French duo." }] },
+                "monthlyListenerCount": { "runs": [{ "text": "66.1M monthly audience" }] }
+            }},
             "contents": [
                 { "musicShelfRenderer": { "contents": [song_row("IluRBvnYMoY", "Instant Crush")] }},
                 shelf("Albums", vec![card("Discovery", "2001", "MPREb_disc"), card("Not an album", "x", "VLPL")]),
@@ -651,6 +664,8 @@ mod tests {
         });
         let a = parse_artist("UCdp", &resp).unwrap();
         assert_eq!(a.name, "Daft Punk");
+        assert_eq!(a.description.as_deref(), Some("Daft Punk were a French duo."));
+        assert_eq!(a.audience.as_deref(), Some("66.1M monthly audience"));
         assert_eq!(a.top_songs.len(), 1);
         assert_eq!(a.albums.iter().map(|r| r.title.as_str()).collect::<Vec<_>>(), ["Discovery"]);
         assert_eq!(a.albums[0].year.as_deref(), Some("2001"));

@@ -133,6 +133,10 @@ export interface Artist {
   id: string;
   name: string;
   thumbnail: string | null;
+  /** The artist's bio. */
+  description: string | null;
+  /** "129M monthly audience". */
+  audience: string | null;
   topSongs: Track[];
   albums: Release[];
   singles: Release[];
