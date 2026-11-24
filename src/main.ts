@@ -3551,9 +3551,9 @@ function mainArtist(t: Track): string {
 }
 
 /**
- * Up to four mixes, each made around one of the artists you play most this
- * month (then the ones you've liked most): a few of your songs by them, and
- * songs like those from YouTube Music's radio, mixed.
+ * Up to four mixes, each made around one of the ten artists you play most this
+ * month (then the ones you've liked most), a different few each day: a few of
+ * your songs by them, and songs like those from YouTube Music's radio, mixed.
  */
 async function makeMixes(): Promise<Mix[]> {
   const stats = await api.listeningStats(Math.floor(Date.now() / 1000) - 30 * 86400).catch(() => null);
@@ -3569,9 +3569,14 @@ async function makeMixes(): Promise<Mix[]> {
   [...liked.values()].forEach(add);
   const plays = new Map(stats?.artists.map((a) => [a.name, a.plays]) ?? []);
   const artists = [...songs.keys()].sort((a, b) => (plays.get(b) ?? 0) * 10 + songs.get(b)!.length - ((plays.get(a) ?? 0) * 10 + songs.get(a)!.length));
+  // A new set each day: from your top ten, the ones yesterday's mixes weren't made around go first.
+  const before = new Set(mixes.mixes.map((m) => m.artists[0]));
+  const pool = shuffled(artists.slice(0, 10));
+  const order = [...pool.filter((a) => !before.has(a)), ...pool.filter((a) => before.has(a))];
   const used = new Set<string>();
   const out: Mix[] = [];
-  for (const artist of artists.slice(0, 4)) {
+  for (const artist of order) {
+    if (out.length === 4) break;
     const own = shuffled(songs.get(artist)!).filter((t) => !used.has(t.id) && !player.hidden.has(t.id)).slice(0, 8);
     if (!own.length) continue;
     const radio = await api.recommendations(own.slice(0, 3).map((t) => t.id), [...used, ...own.map((t) => t.id), ...player.hidden]).catch(() => [] as Track[]);
@@ -5977,6 +5982,8 @@ async function boot() {
     (navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener("change", () => void autoDownload());
     onAway((away) => !away && void autoDownload());
     onAway((away) => !away && void autoBackup());
+    // Back on a new day with Home showing: today's mixes.
+    onAway((away) => !away && view === "home" && mixes.day !== new Date().toDateString() && void renderMixes());
     // Back from allowing installs from Cadence: carry on with the update.
     onAway((away) => {
       if (away || !installPending) return;
