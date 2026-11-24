@@ -2146,7 +2146,26 @@
   box-shadow: var(--shadow);
 }
 
+/* The small bar slides up when music starts and back down when it goes
+   away; `display` only switches off once it is gone (allow-discrete). */
+.phone .player:not(.expanded) {
+  transition:
+    translate 0.3s var(--ease),
+    opacity 0.3s var(--ease),
+    display 0.3s allow-discrete;
+}
+
+@starting-style {
+  .phone .player:not(.expanded, .idle) {
+    translate: 0 calc(100% + 16px);
+    opacity: 0;
+  }
+}
+
 .phone .player.idle {
+  translate: 0 calc(100% + 16px);
+  opacity: 0;
+  pointer-events: none;
   display: none;
 }
 
@@ -2329,7 +2348,7 @@
   background:
     radial-gradient(120% 60% at 50% 18%, color-mix(in oklab, var(--art) 36%, var(--bg)) 0%, var(--bg) 72%),
     var(--bg);
-  animation: np-up 0.32s var(--ease);
+  /* Opening and closing grow it out of the small bar and back (main.ts: growPlayer). */
 }
 
 .phone .player.expanded.settling {
@@ -3404,6 +3423,85 @@
 :is(.phone, .desktop) .hz {
   font-family: var(--mono);
   font-size: 10px;
+}
+
+/* Closing: menus, sheets, panels and dialogs slide down a little and fade
+   instead of vanishing; `display` switches off once they are gone. Opening
+   keeps each one's own animation. */
+.phone :is(.menu, .eq-panel, .queue-panel, .dialog-backdrop, .dl-panel) {
+  transition:
+    translate 0.2s var(--ease),
+    opacity 0.2s var(--ease),
+    display 0.2s allow-discrete,
+    --art 0.6s ease;
+}
+
+.phone :is(.menu, .eq-panel, .queue-panel, .dl-panel)[hidden] {
+  translate: 0 24px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.phone .dialog-backdrop[hidden] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A new song: its cover and name fade in (main.ts: updateNowPlaying). The
+   glow behind the player blends into the new cover's colour. */
+@property --art {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.6 0.16 290);
+}
+
+/* Only where the glow shows (Now Playing, and the queue and lyrics sheets
+   above with the closing rule): blending it on the page itself would
+   redraw every row of a long list on each frame. */
+.phone .player.expanded {
+  transition: --art 0.6s ease;
+}
+
+/* Play and pause turn into each other with a little give. */
+@keyframes swap {
+  from {
+    scale: 0.92;
+  }
+}
+
+@keyframes swap-icon {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+.phone .play-btn.swap {
+  animation: swap 0.22s var(--ease);
+}
+
+.phone .play-btn.swap .icon {
+  animation: swap-icon 0.18s var(--ease);
+}
+
+/* A liked song's heart pops gently. */
+@keyframes pop {
+  45% {
+    scale: 1.2;
+  }
+}
+
+.phone .pop {
+  animation: pop 0.26s var(--ease);
+}
+
+/* Covers and photos fade in as they load (main.ts marks them `shown`). */
+.phone img {
+  transition: opacity 0.25s ease;
+}
+
+.phone img:not(.shown) {
+  opacity: 0;
 }
 
 /* Android's "Remove animations": nothing moves, things just appear. */

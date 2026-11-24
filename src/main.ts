@@ -68,6 +68,15 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 const phone = /Android/i.test(navigator.userAgent);
 document.documentElement.classList.toggle("phone", phone);
 document.documentElement.classList.toggle("desktop", !phone);
+// Phones fade covers and photos in once they have loaded (phone.css); this
+// listens before anything is drawn, so no picture is missed.
+document.addEventListener(
+  "load",
+  (e) => {
+    if (e.target instanceof HTMLImageElement) e.target.classList.add("shown");
+  },
+  true,
+);
 
 /** Where the app starts and Back ends up. */
 const startView: Exclude<View, "page"> = "home";
@@ -469,11 +478,17 @@ async function toggleLike(track: Track) {
     liked.delete(track.id);
   }
   if (on) void autoDownload();
-  document.querySelectorAll<HTMLElement>(`.track[data-id="${CSS.escape(track.id)}"] [data-act="like"]`).forEach((b) => {
+  const hearts = [...document.querySelectorAll<HTMLElement>(`.track[data-id="${CSS.escape(track.id)}"] [data-act="like"]`)];
+  hearts.forEach((b) => {
     b.classList.toggle("on", on);
     b.innerHTML = icon(on ? "heartFilled" : "heart", 18);
   });
   updateNowLike();
+  // Phones: a liked song's hearts pop gently.
+  if (on && phone) {
+    if (player.current?.id === track.id) hearts.push($("#now-like"));
+    hearts.forEach((b) => pulse(b, "pop"));
+  }
   renderSidebar();
   if (view === "liked") void renderLiked();
 }
@@ -659,8 +674,12 @@ document.addEventListener("click", (e) => {
 /** Opens one of the sidebar views. Back history starts over. */
 function setView(v: Exclude<View, "page">) {
   history.length = 0;
+  shownDepth = 0;
   show(v, null);
 }
+
+/** How many pages deep the last page shown was, to tell opening one from going back. */
+let shownDepth = 0;
 
 /** Phones: the playlist whose songs show drag handles ("Change order"), if any. */
 let reordering: number | null = null;
@@ -695,6 +714,13 @@ function show(v: View, p: Page | null, scroll = 0) {
   el.style.removeProperty("--page-art");
   // Lets phone.css give album, artist and playlist pages a glowing header.
   el.dataset.view = p ? p.kind : v;
+  // Phones: a page opened from another slides in from the right, and Back
+  // slides the one before in from the left. Tabs fade (bindTabAnimations).
+  const dir = Math.sign(history.length - shownDepth);
+  shownDepth = history.length;
+  if (phone && dir && !calm()) {
+    el.animate([{ opacity: 0, transform: `translateX(${dir * 32}px)` }, { opacity: 1, transform: "none" }], { duration: 260, easing: EASE });
+  }
   if (v === "home") renderHome();
   else if (v === "search") renderSearch();
   else if (v === "library") renderCollection();
@@ -769,13 +795,108 @@ function markNav() {
 // ---- phone layout ------------------------------------------------------------------
 
 /** The full-screen player, opened from the bar above the tabs. */
-function setNowPlayingOpen(open: boolean) {
+function setNowPlayingOpen(open: boolean, animate = true) {
   const bar = $(".player");
-  const opening = open && phone && !bar.classList.contains("expanded");
-  bar.classList.toggle("expanded", open && phone);
-  // It opens at the top, with the cards below for the song playing now.
-  if (opening || !open) bar.scrollTop = 0;
-  if (opening) renderNpInfo();
+  const isOpen = bar.classList.contains("expanded");
+  if (open && phone && !isOpen) {
+    // Grown out of the small bar, when it shows and sits still (a radio
+    // started from a menu may open the player while the bar slides in).
+    const still = !bar.classList.contains("idle") && !bar.getAnimations().length;
+    const from = still ? { bar: bar.getBoundingClientRect(), art: $("#now-art").getBoundingClientRect() } : null;
+    bar.classList.add("expanded");
+    // It opens at the top, with the cards below for the song playing now,
+    // drawn once it has opened so the opening stays smooth.
+    bar.scrollTop = 0;
+    barRects = from;
+    growing = animate && from && !calm() ? growPlayer(from, true) : [];
+    if (growing.length) void Promise.all(growing.map((a) => a.finished)).then(renderNpInfo, () => {});
+    else renderNpInfo();
+  } else if (open && isOpen && shrinking) {
+    // Opened again while shrinking back: stay open.
+    shrinking.forEach((a) => a.cancel());
+    shrinking = null;
+  } else if (!open && isOpen && !shrinking) {
+    const close = () => {
+      bar.classList.remove("expanded");
+      bar.scrollTop = 0;
+    };
+    // Closed right after opening: the growing stops where it is.
+    growing.forEach((a) => a.cancel());
+    growing = [];
+    if (!animate || !barRects || calm()) return close();
+    const anims = growPlayer(barRects, false);
+    shrinking = anims;
+    void Promise.all(anims.map((a) => a.finished)).then(
+      () => {
+        shrinking = null;
+        close();
+        anims.forEach((a) => a.cancel());
+      },
+      () => {},
+    );
+  }
+}
+
+/** Where the small bar and its cover were when the player opened, to shrink back into. */
+let barRects: { bar: DOMRect; art: DOMRect } | null = null;
+/** The player shrinking back into the small bar, while it does. */
+let shrinking: Animation[] | null = null;
+/** The player growing out of the bar (its last opening's animations). */
+let growing: Animation[] = [];
+
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+
+/** Android's "Remove animations": nothing moves (phone.css does the same for CSS). */
+function calm(): boolean {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Plays a CSS animation class on `el` again from the start. */
+function rerun(el: HTMLElement, cls: string) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+/** Plays a CSS animation class on `el` once: the class goes when its own
+ *  animation ends, so showing `el` again (or redrawing its icon) doesn't replay it. */
+function pulse(el: HTMLElement, cls: string) {
+  rerun(el, cls);
+  const done = (e: AnimationEvent) => {
+    if (e.target !== el) return;
+    el.classList.remove(cls);
+    el.removeEventListener("animationend", done);
+    el.removeEventListener("animationcancel", done);
+  };
+  el.addEventListener("animationend", done);
+  el.addEventListener("animationcancel", done);
+}
+
+/**
+ * The full-screen player grows out of the small bar (or shrinks back into
+ * it): it rises from the bar's place, the cover moves and grows from the
+ * bar's little one, and the rest fades in once there is room. Only moves and
+ * fades, which the phone's graphics chip runs by itself: a growing clip or
+ * rounding corners had to be redrawn every frame, and stuttered on phones.
+ */
+function growPlayer(from: { bar: DOMRect; art: DOMRect }, opening: boolean): Animation[] {
+  const bar = $(".player");
+  const art = $("#now-art");
+  // The player rises from the bar's top edge; the cover's start allows for that.
+  const lift = from.bar.top;
+  const to = art.getBoundingClientRect();
+  const s = from.art.width / to.width;
+  const small = `translate(${from.art.left - to.left}px, ${from.art.top - to.top - lift}px) scale(${s})`;
+  const order = <T>(closed: T, open: T) => (opening ? [closed, open] : [open, closed]);
+  const timing = { duration: opening ? 320 : 260, easing: EASE };
+  const anims = [
+    bar.animate(order({ transform: `translateY(${lift}px)` }, { transform: "none" }), timing),
+    art.animate(order({ transform: small, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }), timing),
+  ];
+  const rest = bar.querySelectorAll(".np-close, .np-from, .np-more, .now-text, #now-like, #now-dl, .transport, .extras, .np-info");
+  const fade = opening ? { duration: 240, delay: 100, easing: EASE, fill: "backwards" as const } : { duration: 120, easing: EASE, fill: "forwards" as const };
+  rest.forEach((el) => anims.push(el.animate(order({ opacity: 0 }, { opacity: 1 }), fade)));
+  return anims;
 }
 
 /** Android's back button: closes whatever is on top. Returns false when
@@ -954,7 +1075,7 @@ function bindDragToClose() {
     "touchstart",
     (e) => {
       drag = null;
-      if (!bar.classList.contains("expanded") || e.touches.length > 1 || bar.scrollTop > 0) return;
+      if (!bar.classList.contains("expanded") || shrinking || e.touches.length > 1 || bar.scrollTop > 0) return;
       if ((e.target as HTMLElement).closest("button, input, .extras")) return;
       const t = e.touches[0];
       drag = { x: t.clientX, y: t.clientY, on: false, lastY: t.clientY, lastT: e.timeStamp, speed: 0 };
@@ -1002,7 +1123,8 @@ function bindDragToClose() {
       () => {
         bar.classList.remove("settling");
         bar.style.translate = "";
-        if (close) setNowPlayingOpen(false);
+        // It has already slid away; no shrinking back into the bar.
+        if (close) setNowPlayingOpen(false, false);
       },
       close ? 240 : 200,
     );
@@ -1224,17 +1346,12 @@ function bindPlaylistHold() {
 
 /** Spotify-style tabs: a tapped icon gives a little and springs back, and the page fades in. */
 function bindTabAnimations() {
-  const restart = (el: HTMLElement, cls: string) => {
-    el.classList.remove(cls);
-    void el.offsetWidth;
-    el.classList.add(cls);
-  };
   let settle: number | undefined;
   document.querySelectorAll<HTMLElement>(".tabbar .tab").forEach((tab) =>
     tab.addEventListener("click", () => {
-      restart(tab, "tapped");
+      rerun(tab, "tapped");
       const v = $("#view");
-      restart(v, "entering");
+      rerun(v, "entering");
       // Only the page the tab opens fades in, not later redraws of it.
       clearTimeout(settle);
       settle = window.setTimeout(() => v.classList.remove("entering"), 400);
@@ -3306,7 +3423,9 @@ async function loadArtistPhotos(el: HTMLElement, artists: ListeningStats["artist
     const url = imgUrl(artistPhotos.get(a.id!));
     const slot = el.querySelector<HTMLElement>(`[data-photo="${CSS.escape(a.id!)}"]`);
     if (!url || !slot) continue;
-    const img = Object.assign(new Image(), { src: url, alt: "", draggable: false, className: "fade-in" });
+    // It loads before it is in the page, so the load listener that marks
+    // pictures `shown` (phone.css fades them in) never sees it.
+    const img = Object.assign(new Image(), { src: url, alt: "", draggable: false, className: "fade-in shown" });
     img.onload = () => slot.replaceChildren(img);
   }
 }
@@ -5411,8 +5530,17 @@ function renderEq() {
 
 let seeking = false;
 
+/** The song the player bar last showed, to notice a new one. */
+let shownTrack = "";
+
 function updateNowPlaying() {
   const t = player.current;
+  // Phones: a new song's name fades up into place, and its cover fades in as
+  // it loads (phone.css). A swipe already slides the new song in.
+  if (phone && t && shownTrack && t.id !== shownTrack && !justSwiped() && !calm()) {
+    $(".now-text").animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: EASE });
+  }
+  shownTrack = t?.id ?? "";
   $("#now-title").innerHTML = t ? linked(t.title, albumTarget(t)) : "Nothing playing";
   $("#now-title").dataset.len = titleLength(t?.title ?? "");
   const showArtists = () => {
@@ -5467,9 +5595,12 @@ function updateNowLike() {
 
 function updateState() {
   for (const play of [$("#btn-play"), $("#q-play")]) {
+    const label = player.playing ? "Pause" : "Play";
+    // Phones: play and pause turn into each other with a little give.
+    if (phone && play.title && play.title !== label) pulse(play, "swap");
     setIcon(play, player.playing ? "pause" : "play", 28);
     play.classList.toggle("loading", player.loading && player.playing);
-    play.title = player.playing ? "Pause" : "Play";
+    play.title = label;
   }
   const shuffle = $("#btn-shuffle");
   shuffle.classList.toggle("on", player.shuffle);
