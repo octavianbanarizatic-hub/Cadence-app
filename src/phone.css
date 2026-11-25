@@ -294,9 +294,28 @@
 
 /* Album, artist and playlist headers glow with their cover's color. */
 :is(.phone, .desktop) .main:is([data-view="playlist"], [data-view="album"], [data-view="artist"], [data-view="localAlbum"], [data-view="localArtist"], [data-view="mood"], [data-view="shared"], [data-view="ytlist"], [data-view="mix"]) {
-  background:
-    radial-gradient(110% 520px at 25% 0, color-mix(in oklab, var(--page-art, var(--art)) 34%, var(--bg)), var(--bg) 75%) local no-repeat,
-    var(--bg);
+  --glow: radial-gradient(110% 520px at 25% 0, color-mix(in oklab, var(--page-art, var(--art)) 34%, var(--bg)), var(--bg) 75%);
+  background: var(--glow) local no-repeat, var(--bg);
+}
+
+/* On phones a `local` background makes every scroll step repaint the whole
+   page, so there the glow is a layer of its own behind the page that scrolls
+   with it. */
+.phone .main:is([data-view="playlist"], [data-view="album"], [data-view="artist"], [data-view="localAlbum"], [data-view="localArtist"], [data-view="mood"], [data-view="shared"], [data-view="ytlist"], [data-view="mix"]) {
+  isolation: isolate;
+  background: var(--bg);
+}
+
+.phone .main::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  height: 520px;
+  background: var(--glow, none);
+  pointer-events: none;
 }
 
 .phone .view-head {
