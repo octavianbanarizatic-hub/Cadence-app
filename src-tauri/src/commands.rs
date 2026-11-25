@@ -259,6 +259,12 @@ pub fn listening_stats(state: State<'_, AppState>, since: i64) -> CmdResult<db::
     db::listening_stats(&state.db.lock().unwrap(), since, 10).map_err(db_err)
 }
 
+/// The id of every song ever played.
+#[tauri::command]
+pub fn played_ids(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
+    db::played_ids(&state.db.lock().unwrap()).map_err(db_err)
+}
+
 /// Switches between the mini player and the main window. Async on purpose:
 /// creating a window from a sync command deadlocks on Windows.
 #[tauri::command]

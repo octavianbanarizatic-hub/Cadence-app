@@ -297,6 +297,8 @@ export const api = {
   playTime: (id: number, seconds: number) => invoke<void>("play_time", { id, seconds }),
   /** Top songs, artists and albums played since `since` (unix seconds). */
   listeningStats: (since: number) => invoke<ListeningStats>("listening_stats", { since }),
+  /** Every song ever played. */
+  playedIds: () => invoke<string[]>("played_ids"),
   /** Phones: the navigation bar's height in CSS pixels; the page draws behind it. */
   navBarHeight: () => invoke<number>("nav_bar_height"),
   /** This version, and a newer one if it's out (phones and Windows). */

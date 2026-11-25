@@ -60,6 +60,8 @@ type Page =
   | { kind: "ytlist"; id: string }
   /** One of today's mixes on Home. */
   | { kind: "mix"; index: number }
+  /** Discover Weekly or Release Radar on Home. */
+  | { kind: "weekly"; which: WeeklyKind }
   /** A podcast, by Apple's id. */
   | { kind: "podcast"; id: string };
 
@@ -275,6 +277,7 @@ function pageFor(target: string): Page | null {
   if (kind === "album") return { kind: "album", id: rest };
   if (kind === "playlist") return { kind: "playlist", id: Number(rest) };
   if (kind === "mix") return { kind: "mix", index: Number(rest) };
+  if (kind === "weekly" && (rest === "discover" || rest === "radar")) return { kind: "weekly", which: rest };
   if (kind === "podcast") return { kind: "podcast", id: rest };
   if (kind === "ytlist") return { kind: "ytlist", id: rest };
   if (kind === "lartist") return { kind: "localArtist", artist: rest };
@@ -2854,16 +2857,18 @@ async function pageHtml(p: Page): Promise<{ markup: string; mount: () => void }>
       },
     };
   }
-  if (p.kind === "shared" || p.kind === "ytlist" || p.kind === "mix") {
+  if (p.kind === "shared" || p.kind === "ytlist" || p.kind === "mix" || p.kind === "weekly") {
     const { name, tracks, missing } =
       p.kind === "shared"
         ? await api.songs(p.ids).then((tracks) => ({ name: p.name, tracks, missing: p.ids.length - tracks.length }))
         : p.kind === "ytlist"
           ? await api.youtubePlaylist(p.id).then((r) => ({ name: r.title, tracks: r.tracks, missing: 0 }))
-          : mixList(p.index);
+          : p.kind === "mix"
+            ? mixList(p.index)
+            : weeklyList(p.which);
     const meta = [count(tracks.length, "song"), totalTime(tracks), missing ? `${missing} not found` : ""];
     const extra = `<button class="icon-btn" data-hero="save" title="Save to your playlists">${icon("save", 22)}</button>`;
-    const label = { shared: "Shared playlist", ytlist: "YouTube playlist", mix: "Daily mix" }[p.kind];
+    const label = { shared: "Shared playlist", ytlist: "YouTube playlist", mix: "Daily mix", weekly: "Made for you" }[p.kind];
     return {
       markup:
         hero({ art: artUrl(tracks.find((t) => t.thumbnail)), fallback: "playlist", label, title: name, meta: meta.filter(Boolean).join(" · "), tracks, extra }) +
@@ -3609,15 +3614,23 @@ function mixList(index: number): { name: string; tracks: Track[]; missing: numbe
   return { name: mix.name, tracks: mix.tracks, missing: 0 };
 }
 
-/** Home: today's mixes, in a row; made the first time Home shows each day. */
+/**
+ * Home's Made for you: Discover Weekly, Release Radar, then today's mixes, in a
+ * row; each made the first time Home shows once it's due.
+ */
 async function renderMixes() {
   const draw = () => {
     const el = document.getElementById("home-mixes");
     if (!el) return;
+    const lists = WEEKLY.flatMap((w) => {
+      const list = weekly[w.kind];
+      return list?.tracks.length ? [{ target: `weekly:${w.kind}`, art: imgUrl(list.tracks[0].thumbnail), title: topArtists(list.tracks).join(", "), badge: w.name }] : [];
+    });
     const items = mixes.mixes.map((m, i) => ({ target: `mix:${i}`, art: imgUrl(m.tracks[0]?.thumbnail), title: m.artists.join(", "), badge: m.name }));
-    el.innerHTML = cards("Your daily mixes", items, false, true);
+    el.innerHTML = cards("Made for you", [...lists, ...items], false, true);
   };
   draw();
+  for (const w of WEEKLY) void makeWeekly(w, draw);
   const day = new Date().toDateString();
   if (mixes.day === day || mixing) return;
   mixing = true;
@@ -3684,6 +3697,166 @@ async function makeMixes(): Promise<Mix[]> {
     out.push({ name: `Daily Mix ${out.length + 1}`, artists: [artist, ...others.slice(0, 2)], tracks });
   }
   return out;
+}
+
+// ---- Discover Weekly and Release Radar -------------------------------------------
+
+type WeeklyKind = "discover" | "radar";
+
+/** As in Spotify: Discover Weekly comes on Mondays, Release Radar on Fridays. */
+const WEEKLY: { kind: WeeklyKind; name: string; weekday: number; make: () => Promise<Track[] | null> }[] = [
+  { kind: "discover", name: "Discover Weekly", weekday: 1, make: makeDiscover },
+  { kind: "radar", name: "Release Radar", weekday: 5, make: makeRadar },
+];
+
+interface WeeklyList {
+  /** The day it was made for: its Monday or Friday. */
+  week: string;
+  tracks: Track[];
+}
+
+/**
+ * This week's lists, and the albums and singles Release Radar has seen
+ * (YouTube Music gives a release's year, not its date: one not seen before is new).
+ */
+let weekly = settings.get<{ discover?: WeeklyList; radar?: WeeklyList; seen: string[]; used?: string[] }>("weekly", { seen: [] });
+const making = new Set<WeeklyKind>();
+/** When making each last failed (offline, say): it waits a few hours to try again. */
+const weeklyFailed = new Map<WeeklyKind, number>();
+
+/** Whether `w` should be made now: its day has come round, and it didn't just fail. */
+function weeklyDue(w: (typeof WEEKLY)[number]): boolean {
+  return weekly[w.kind]?.week !== lastWeekday(w.weekday) && Date.now() - (weeklyFailed.get(w.kind) ?? 0) > 3 * 3600_000;
+}
+
+/** The last `weekday` (0 is Sunday), today included. */
+function lastWeekday(weekday: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() - weekday + 7) % 7));
+  return d.toDateString();
+}
+
+/** Whether a mix or weekly list is due, when the app comes back to Home. */
+function madeForYouDue(): boolean {
+  return mixes.day !== new Date().toDateString() || WEEKLY.some(weeklyDue);
+}
+
+function weeklyList(which: WeeklyKind): { name: string; tracks: Track[]; missing: number } {
+  const list = weekly[which];
+  const w = WEEKLY.find((w) => w.kind === which)!;
+  if (!list) throw new Error(`${w.name} isn't made yet.`);
+  return { name: w.name, tracks: list.tracks, missing: 0 };
+}
+
+/**
+ * Makes `w` when its day has come round; offline, last week's stays. With
+ * nothing to put in it (no new releases at all, say), it's empty till next week.
+ */
+async function makeWeekly(w: (typeof WEEKLY)[number], done: () => void) {
+  const week = lastWeekday(w.weekday);
+  if (!weeklyDue(w) || making.has(w.kind)) return;
+  making.add(w.kind);
+  try {
+    const tracks = await w.make();
+    if (!tracks) {
+      weeklyFailed.set(w.kind, Date.now());
+      return;
+    }
+    // An empty one keeps last week's songs on Home, but counts as made.
+    weekly = { ...weekly, [w.kind]: { week, tracks: tracks.length ? tracks : (weekly[w.kind]?.tracks ?? []) } };
+    settings.set("weekly", weekly);
+    done();
+  } finally {
+    making.delete(w.kind);
+  }
+}
+
+/** The artists heard most in a list, for its card. */
+function topArtists(tracks: Track[], n = 3): string[] {
+  const count = new Map<string, number>();
+  for (const t of tracks) count.set(mainArtist(t), (count.get(mainArtist(t)) ?? 0) + 1);
+  return [...count.keys()].sort((a, b) => count.get(b)! - count.get(a)!).slice(0, n);
+}
+
+/**
+ * Thirty songs you've never played (nor liked or hidden), like the ones you
+ * play most this month and some you've liked; two at most by one artist.
+ */
+async function makeDiscover(): Promise<Track[] | null> {
+  const [stats, played] = await Promise.all([
+    api.listeningStats(Math.floor(Date.now() / 1000) - 30 * 86400).catch(() => null),
+    api.playedIds().catch(() => null),
+  ]);
+  if (!played) return null;
+  const seen = new Set<string>();
+  const seeds = shuffled([...(stats?.tracks.map((s) => s.track) ?? []), ...shuffled([...liked.values()]).slice(0, 20)]).filter(
+    (t) => t.id.startsWith("yt:") && !seen.has(t.id) && seen.add(t.id),
+  );
+  const skip = new Set([...played, ...liked.keys(), ...player.hidden]);
+  const picks: Track[] = [];
+  const by = new Map<string, number>();
+  let reached = false;
+  // Six seeds a time, as YouTube Music's radio takes them, until there are enough.
+  for (let i = 0; i < seeds.length && i < 24 && picks.length < 30; i += 6) {
+    const radio = await api.recommendations(seeds.slice(i, i + 6).map((t) => t.id), [...skip]).then(
+      (r) => ((reached = true), r),
+      () => [] as Track[],
+    );
+    for (const t of radio) {
+      const artist = mainArtist(t).toLowerCase();
+      if (picks.length === 30 || skip.has(t.id) || (by.get(artist) ?? 0) >= 2) continue;
+      by.set(artist, (by.get(artist) ?? 0) + 1);
+      skip.add(t.id);
+      picks.push(t);
+    }
+  }
+  // Seeds, but YouTube Music couldn't be reached: try again later.
+  if (seeds.length && !reached) return null;
+  return shuffled(picks);
+}
+
+/**
+ * New songs from the artists you follow and the ones you play most this
+ * month: singles whole, an album's first two songs; thirty at most.
+ */
+async function makeRadar(): Promise<Track[] | null> {
+  const stats = await api.listeningStats(Math.floor(Date.now() / 1000) - 30 * 86400).catch(() => null);
+  const artists = new Map<string, string>();
+  for (const a of stats?.artists ?? []) if (a.id) artists.set(a.id, a.name);
+  for (const a of following.slice(0, 20)) artists.set(a.id, a.name);
+  const pages = await Promise.all([...artists.keys()].slice(0, 30).map((id) => api.artist(id).catch(() => null)));
+  if (pages.every((p) => !p)) return null;
+  const year = new Date().getFullYear();
+  const seen = new Set(weekly.seen);
+  const recent = (r: Release) => Number(r.year) >= year - 1;
+  // Unseen ones first (none the first week), topped up with each artist's two
+  // newest, ones that weren't in last week's first; mixed, so a quiet week still changes.
+  const releases = (p: Artist | null) => [...(p?.singles ?? []), ...(p?.albums ?? [])].filter(recent);
+  const used = new Set(weekly.used);
+  const unseen = weekly.seen.length ? pages.flatMap((p) => releases(p).filter((r) => !seen.has(r.id))) : [];
+  const newest = pages.flatMap((p) => [...releases(p).filter((r) => !used.has(r.id)), ...releases(p).filter((r) => used.has(r.id))].slice(0, 2));
+  // This year's unseen before last year's: an artist new to the list brings all of both.
+  const thisYear = (r: Release) => Number(r.year) === year;
+  const fresh = [
+    ...shuffled(unseen.filter(thisYear)),
+    ...shuffled(unseen.filter((r) => !thisYear(r))),
+    ...shuffled(newest.filter((r) => !unseen.some((u) => u.id === r.id))),
+  ];
+  const albums = await Promise.all(fresh.slice(0, 20).map((r) => api.album(r.id).catch(() => null)));
+  if (fresh.length && albums.every((a) => !a)) return null;
+  const lists = albums.map((a) => (a ? (a.subtitle.startsWith("Album") ? a.tracks.slice(0, 2) : a.tracks).filter((t) => !player.hidden.has(t.id)) : []));
+  // A song from each release in turn, so one album doesn't fill it.
+  const tracks: Track[] = [];
+  const ids = new Set<string>();
+  for (let i = 0; lists.some((l) => i < l.length) && tracks.length < 30; i++) {
+    for (const l of lists) if (l[i] && tracks.length < 30 && !ids.has(l[i].id)) ids.add(l[i].id) && tracks.push(l[i]);
+  }
+  // Once it's made, everything on the pages counts as seen; the newest are kept.
+  if (tracks.length) {
+    const all = pages.flatMap((p) => (p ? [...p.singles, ...p.albums].map((r) => r.id) : []));
+    weekly = { ...weekly, seen: [...new Set([...all, ...weekly.seen])].slice(0, 3000), used: fresh.slice(0, 20).map((r) => r.id) };
+  }
+  return tracks;
 }
 
 // ---- radio, sleep timer, queue and pins -----------------------------------------
@@ -6072,7 +6245,7 @@ async function boot() {
     onAway((away) => !away && void autoDownload());
     onAway((away) => !away && void autoBackup());
     // Back on a new day with Home showing: today's mixes.
-    onAway((away) => !away && view === "home" && mixes.day !== new Date().toDateString() && void renderMixes());
+    onAway((away) => !away && view === "home" && madeForYouDue() && void renderMixes());
     // Back from allowing installs from Cadence: carry on with the update.
     onAway((away) => {
       if (away || !installPending) return;

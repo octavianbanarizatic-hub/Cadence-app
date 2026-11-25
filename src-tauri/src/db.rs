@@ -561,6 +561,13 @@ pub fn listening_stats(conn: &Connection, since: i64, limit: usize) -> rusqlite:
     Ok(ListeningStats { seconds, plays, tracks, artists, albums })
 }
 
+/// Every song ever played, once each: Discover Weekly leaves them out.
+pub fn played_ids(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT DISTINCT track_id FROM plays")?;
+    let ids = stmt.query_map([], |r| r.get(0))?.collect();
+    ids
+}
+
 /// An empty database in memory, for other modules' tests.
 #[cfg(test)]
 pub fn open_memory() -> Connection {
@@ -738,6 +745,10 @@ mod tests {
         assert_eq!(recent.plays, 6);
         assert_eq!(recent.tracks.len(), 1);
         assert_eq!(recent.artists[0].plays, 3);
+
+        let mut played = played_ids(&conn).unwrap();
+        played.sort();
+        assert_eq!(played, ["yt:a", "yt:b", "yt:c"]);
     }
 
     #[test]

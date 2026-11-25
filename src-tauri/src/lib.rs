@@ -211,6 +211,7 @@ pub fn run() {
             commands::play_start,
             commands::play_time,
             commands::listening_stats,
+            commands::played_ids,
             commands::lyrics,
             commands::mini_player,
             commands::media_state,
