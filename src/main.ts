@@ -4,6 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
   artUrl,
+  videoUrl,
   formatBytes,
   formatTime,
   onAway,
@@ -810,6 +811,7 @@ function setNowPlayingOpen(open: boolean, animate = true) {
     const still = !bar.classList.contains("idle") && !bar.getAnimations().length;
     const from = still ? { bar: bar.getBoundingClientRect(), art: $("#now-art").getBoundingClientRect() } : null;
     bar.classList.add("expanded");
+    syncVideo();
     // It opens at the top, with the cards below for the song playing now,
     // drawn once it has opened so the opening stays smooth.
     bar.scrollTop = 0;
@@ -1273,6 +1275,7 @@ function bindPhone() {
   bindDragToClose();
   bindNpInfo();
   bindPullToRefresh();
+  bindVideoMode();
   $(".brand").innerHTML = `${mark(28)}<span>cadence</span>`;
   $("#queue-panel h2").textContent = "Queue";
   $("#np-close").onclick = () => setNowPlayingOpen(false);
@@ -5797,6 +5800,81 @@ function renderEq() {
 
 let seeking = false;
 
+// ---- Video mode (phones) -------------------------------------------------------
+
+/** Now Playing's music video: its picture, kept in step with the sound playing (`Player.video`). */
+let nowVideo: HTMLVideoElement | null = null;
+/** Whether the app is in the background, where no picture is needed. */
+let appAway = false;
+
+function bindVideoMode() {
+  $("#np-mode").addEventListener("click", (e) => {
+    const mode = (e.target as HTMLElement).closest<HTMLElement>("[data-mode]")?.dataset.mode;
+    const on = mode === "video";
+    if (!mode || on === player.videoMode) return;
+    if (on && !navigator.onLine) return toast("Videos need the internet");
+    void player.setVideoMode(on).then((found) => found || toast("This song has no music video"));
+    showVideo();
+  });
+  player.addEventListener("video", showVideo);
+  player.addEventListener("state", syncVideo);
+  player.addEventListener("time", syncVideo);
+  onAway((away) => {
+    appAway = away;
+    syncVideo();
+  });
+}
+
+/** The Song | Video switch, and in Video mode the video over the cover. */
+function showVideo() {
+  const mode = $("#np-mode");
+  mode.hidden = !phone || !player.current?.id.startsWith("yt:");
+  mode.style.setProperty("--i", player.videoMode ? "1" : "0");
+  mode.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === (player.videoMode ? "video" : "song"))));
+  const id = phone ? player.video : null;
+  const art = $("#now-art");
+  art.classList.toggle("video", !!id);
+  if (nowVideo && nowVideo.dataset.id !== id) {
+    nowVideo.remove();
+    nowVideo.removeAttribute("src");
+    nowVideo.load();
+    nowVideo = null;
+  }
+  if (id && !nowVideo) {
+    const v = document.createElement("video");
+    v.className = "now-video";
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.dataset.id = id;
+    v.src = videoUrl(id);
+    // The cover shows until the picture comes.
+    v.addEventListener("playing", () => v.classList.add("on"));
+    nowVideo = v;
+  }
+  // A new song's cover replaced what was in the box; the same video goes on.
+  if (nowVideo && !art.contains(nowVideo)) art.append(nowVideo);
+  syncVideo();
+}
+
+/** Plays the picture along with the sound, only while it can be seen. */
+function syncVideo() {
+  const v = nowVideo;
+  if (!v) return;
+  const a = player.audio;
+  const seen = $(".player").classList.contains("expanded") && !appAway;
+  if (!seen || a.paused) {
+    if (!v.paused) v.pause();
+    if (!seen) return;
+  }
+  // Each jump fetches the picture from there: wait for one to land before the
+  // next, and aim a little ahead, as the sound moves on while it loads.
+  if (v.readyState >= HTMLMediaElement.HAVE_METADATA && !v.seeking && Math.abs(v.currentTime - a.currentTime) > 0.35) {
+    v.currentTime = a.currentTime + (a.paused ? 0 : 0.3);
+  }
+  if (!a.paused && v.paused) v.play().catch(() => {});
+}
+
 /** The song the player bar last showed, to notice a new one. */
 let shownTrack = "";
 
@@ -5818,6 +5896,7 @@ function updateNowPlaying() {
   showArtists();
   if (t) void findArtists(t).then((found) => found && player.current === t && showArtists());
   $("#now-art").innerHTML = t ? artHtml(t, "lg") : "";
+  showVideo();
   // Episodes aren't liked; the buttons around play skip within them.
   $("#now-like").hidden = !t || isEpisode(t);
   $(".player").classList.toggle("idle", !t);

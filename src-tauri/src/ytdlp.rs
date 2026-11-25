@@ -59,6 +59,10 @@ pub enum Quality {
     Normal,
     /// About 50 to 70 kbps, to save space.
     Low,
+    /// A music video's picture without sound (Now Playing's Video mode; its
+    /// sound plays as a song's does): up to 480p, H.264 where YouTube has it.
+    #[serde(skip)]
+    Video,
 }
 
 impl Quality {
@@ -67,6 +71,7 @@ impl Quality {
             Quality::High => "bestaudio",
             Quality::Normal => "bestaudio[ext=m4a]/bestaudio",
             Quality::Low => "bestaudio[abr<=80]/worstaudio",
+            Quality::Video => "bestvideo[height<=480][vcodec^=avc1]/bestvideo[height<=480][ext=mp4]/bestvideo[height<=480]",
         }
     }
 }
@@ -97,10 +102,12 @@ impl YtDlp {
                     .collect()
             })
             .unwrap_or_default();
-        let mime = match info["ext"].as_str() {
-            Some("webm") => "audio/webm",
-            Some("mp3") => "audio/mpeg",
-            Some("ogg" | "opus") => "audio/ogg",
+        let mime = match (quality, info["ext"].as_str()) {
+            (Quality::Video, Some("webm")) => "video/webm",
+            (Quality::Video, _) => "video/mp4",
+            (_, Some("webm")) => "audio/webm",
+            (_, Some("mp3")) => "audio/mpeg",
+            (_, Some("ogg" | "opus")) => "audio/ogg",
             _ => "audio/mp4",
         };
         Ok(Resolved {

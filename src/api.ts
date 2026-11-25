@@ -321,6 +321,8 @@ export const api = {
   explore: (country: string | null) => invoke<Explore>("explore", { country }),
   /** A mood's or genre's playlists. */
   mood: (params: string) => invoke<Shelf[]>("mood", { params }),
+  /** A song's official music video on YouTube (its video id), or null. */
+  musicVideo: (title: string, artist: string) => invoke<string | null>("music_video", { title, artist }),
   /** The songs with these YouTube ids, in order; ones YouTube doesn't know are left out. */
   songs: (ids: string[]) => invoke<Track[]>("songs", { ids }),
   /** Phones: opens Android's share sheet with a link to `item`. */
@@ -370,6 +372,11 @@ export const api = {
 
 function media(path: string): string {
   return convertFileSrc(path, "media");
+}
+
+/** A music video's picture, without sound (Video mode). */
+export function videoUrl(videoId: string): string {
+  return media(`ytv/${videoId}`);
 }
 
 export function streamUrl(track: Track): string {

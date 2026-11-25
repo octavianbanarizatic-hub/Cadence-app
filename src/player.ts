@@ -1,4 +1,4 @@
-import { api, artUrl, streamUrl, type Track } from "./api";
+import { api, artUrl, streamUrl, videoUrl, type Track } from "./api";
 import { settings } from "./settings";
 
 export type Repeat = "off" | "all" | "one";
@@ -115,6 +115,16 @@ export class Player extends EventTarget {
   stopAtEnd = false;
   /** Bumped by `playList`, so songs that arrive for an old list are dropped. */
   private listGen = 0;
+  /**
+   * Video mode (phones' Now Playing), as YouTube Music's: a YouTube song
+   * plays its music video's sound, so the picture the page shows (`video`)
+   * stays in step with it. It stays on for the next songs.
+   */
+  videoMode = /Android/i.test(navigator.userAgent) && settings.get<boolean>("videoMode", false);
+  /** Each song's music video, once looked up; null when it has none. */
+  private videos = new Map<string, string | null>();
+  /** The video whose sound an element plays, when it plays one. */
+  private sounds = new WeakMap<HTMLAudioElement, string>();
 
   constructor() {
     super();
@@ -160,7 +170,7 @@ export class Player extends EventTarget {
         clearTimeout(this.prefetchTimer);
         this.prefetchTimer = window.setTimeout(() => {
           const next = this.queue[this.upcomingIndex()];
-          if (next) this.warm(next);
+          if (next) this.warm(next, true);
         }, 2000);
       }),
     );
@@ -214,7 +224,7 @@ export class Player extends EventTarget {
     // Plans change (queue edits, shuffle, repeat); keep the spare in step.
     if (this.preloaded !== track.id && this.preloadFailed !== track.id && this.spare.paused) {
       this.preloaded = track.id;
-      this.spare.src = streamUrl(track);
+      this.spare.src = this.source(track, this.spare);
       this.spare.loop = false;
     }
     clearTimeout(this.gaplessTimer);
@@ -722,10 +732,15 @@ export class Player extends EventTarget {
       if (!gapless) this.release(outgoing);
     } else {
       this.release(this.spare);
-      this.audio.src = streamUrl(track);
+      this.audio.src = this.source(track, this.audio);
     }
     this.preloaded = null;
     this.preloadFailed = null;
+    // Video mode with a song not looked up yet: its video's sound once found.
+    // (Also a next song loaded ahead with its own sound before its video was found.)
+    if (this.videoMode && this.videos.get(track.id) !== null && !this.sounds.has(this.audio)) {
+      void this.findVideo(track).then((v) => v && this.current === track && this.videoMode && !this.sounds.has(this.audio) && this.switchSound());
+    }
     // Full volume, whatever fade this element was last part of.
     this.fadeTo(this.audio, 1, 0);
     this.audio.loop = this.repeat === "one";
@@ -752,8 +767,79 @@ export class Player extends EventTarget {
    * Resolves a YouTube stream ahead of time (yt-dlp takes a few seconds), so
    * it starts almost immediately when played. Cheap to call repeatedly.
    */
-  warm(track: Track) {
-    void this.lookUp(track);
+  warm(track: Track, upcoming = false) {
+    if (this.videoMode && navigator.onLine) {
+      void this.findVideo(track).then((v) => {
+        void this.lookUp(v ? { ...track, id: `yt:${v}` } : track);
+        // The next song's picture too: asking for its first bytes has its stream found ahead.
+        if (v && upcoming) void fetch(videoUrl(v), { headers: { Range: "bytes=0-1" } }).catch(() => {});
+      });
+    } else void this.lookUp(track);
+  }
+
+  // ---- Video mode ----------------------------------------------------------
+
+  /** The music video whose picture goes with what plays now, if any. */
+  get video(): string | null {
+    return this.sounds.get(this.audio) ?? null;
+  }
+
+  /** What `el` should play for `track`: its music video's sound in Video mode. */
+  private source(track: Track, el: HTMLAudioElement): string {
+    const video = this.videoMode && navigator.onLine ? this.videos.get(track.id) : null;
+    if (video) this.sounds.set(el, video);
+    else this.sounds.delete(el);
+    return streamUrl(video ? { ...track, id: `yt:${video}` } : track);
+  }
+
+  /** Looks up a YouTube song's music video, once; offline, it asks again next time. */
+  private async findVideo(track: Track): Promise<string | null> {
+    if (!track.id.startsWith("yt:")) return null;
+    if (this.videos.has(track.id)) return this.videos.get(track.id)!;
+    const video = await api.musicVideo(track.title, track.artist).catch(() => undefined);
+    if (video === undefined) return null;
+    this.videos.set(track.id, video);
+    return video;
+  }
+
+  /**
+   * Turns Video mode on or off. The song playing goes on from about the same
+   * point with the other sound; false when it has no video to show.
+   */
+  async setVideoMode(on: boolean): Promise<boolean> {
+    this.videoMode = on;
+    settings.set("videoMode", on);
+    // A next song loaded with the other sound loads again.
+    if (this.preloaded && this.spare.paused) {
+      this.release(this.spare);
+      this.preloaded = null;
+    }
+    const track = this.current;
+    const video = on && track ? await this.findVideo(track) : null;
+    if (track && this.current === track && this.videoMode === on) this.switchSound();
+    this.emit("video");
+    return !on || !!video;
+  }
+
+  /**
+   * Plays the song with the sound Video mode wants now, from about the same
+   * point. `force` reloads it even when the sound is the same.
+   */
+  private switchSound(force = false) {
+    const track = this.current;
+    if (!track) return;
+    const a = this.audio;
+    const before = this.sounds.get(a) ?? null;
+    const src = this.source(track, a);
+    if (!force && (this.sounds.get(a) ?? null) === before) return;
+    // Videos often run longer than their songs: back to the song, it stays inside it.
+    const at = this.sounds.has(a) || !track.duration ? a.currentTime : Math.min(a.currentTime, Math.max(0, track.duration - 5));
+    const play = !a.paused || force;
+    a.src = src;
+    if (at) a.currentTime = at;
+    this.setLoading(true);
+    if (play) a.play().catch(() => {});
+    this.emit("video");
   }
 
   private async lookUp(track: Track) {
@@ -788,6 +874,12 @@ export class Player extends EventTarget {
     this.setLoading(false);
     // A failed element still reports itself as playing; make the UI agree.
     this.audio.pause();
+    // A music video's sound that won't play: the song itself, from there on.
+    if (this.sounds.has(this.audio)) {
+      this.videos.set(track.id, null);
+      this.switchSound(true);
+      return;
+    }
     // The media element hides the reason; ask the stream endpoint directly.
     let message = "This track could not be played.";
     let works = false;

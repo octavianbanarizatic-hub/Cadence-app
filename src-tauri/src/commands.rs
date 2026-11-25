@@ -602,6 +602,15 @@ pub async fn explore(state: State<'_, AppState>, country: Option<String>) -> Cmd
     ytmusic::explore(&state.http, country.as_deref()).await
 }
 
+/// A song's official music video on YouTube, if it has one (Video mode).
+#[tauri::command]
+pub async fn music_video(state: State<'_, AppState>, title: String, artist: String) -> CmdResult<Option<String>> {
+    if title.len() > 300 || artist.len() > 300 {
+        return Err("too long".into());
+    }
+    ytmusic::music_video(&state.http, &title, &artist).await
+}
+
 /// A mood's or genre's playlists.
 #[tauri::command]
 pub async fn mood(state: State<'_, AppState>, params: String) -> CmdResult<Vec<ytmusic::Shelf>> {

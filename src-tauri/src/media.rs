@@ -2,6 +2,8 @@
 //!
 //! - `yt/<videoId>`  streams YouTube audio, fetched in ranges from YouTube's
 //!   CDN, or from disk when the song is downloaded
+//! - `ytv/<videoId>` streams a music video's picture (no sound), for Now
+//!   Playing's Video mode
 //! - `file/<id>`     streams a file from the local library
 //! - `cover/<id>`    returns the artwork embedded in a local file
 //! - `img/<url>`     returns a YouTube Music cover through an on-disk cache
@@ -160,6 +162,7 @@ async fn serve(app: &AppHandle, request: &Request<Vec<u8>>) -> Result<Response<V
     let state = app.state::<AppState>();
     match kind {
         "yt" => serve_youtube(&state, arg, parse_range(request)).await,
+        "ytv" => serve_youtube_video(&state, arg, parse_range(request)).await,
         "file" => serve_file(&state, local_id(arg)?, parse_range(request)).await,
         "cover" => serve_cover(&state, local_id(arg)?).await,
         "img" => serve_remote_image(&state, arg).await,
@@ -315,7 +318,19 @@ async fn serve_youtube(
     }
     #[cfg(target_os = "android")]
     let req_end = req_end.or((start == 0).then_some(YT_FIRST_CHUNK - 1));
-    Ok(match fetch_youtube(state, id, Quality::Normal, start, req_end).await? {
+    Ok(chunk_response(fetch_youtube(state, id, Quality::Normal, start, req_end).await?, start))
+}
+
+/// A music video's picture, always from YouTube: videos aren't downloaded.
+async fn serve_youtube_video(state: &AppState, id: &str, (start, req_end): (u64, Option<u64>)) -> Result<Response<Vec<u8>>, Fail> {
+    if !valid_video_id(id) {
+        return Err((StatusCode::BAD_REQUEST, "bad video id".into()));
+    }
+    Ok(chunk_response(fetch_youtube(state, id, Quality::Video, start, req_end).await?, start))
+}
+
+fn chunk_response(chunk: Chunk, start: u64) -> Response<Vec<u8>> {
+    match chunk {
         Chunk::Partial { mime, body, total } => partial(mime, start, body, total),
         Chunk::Whole { mime, body } => base(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime)
@@ -323,7 +338,7 @@ async fn serve_youtube(
             .body(body)
             .unwrap(),
         Chunk::PastEnd { total } => unsatisfiable(total),
-    })
+    }
 }
 
 /// One piece of a YouTube audio stream.

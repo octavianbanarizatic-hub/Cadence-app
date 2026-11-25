@@ -78,6 +78,12 @@
         <button class="icon-btn np-more" id="np-more" title="More" data-icon="more"></button>
         <!-- The player's first screen; phones scroll past it to .np-info. -->
         <div class="np-main">
+        <!-- Phones: the song, or its music video (Video mode). -->
+        <div class="period np-mode" id="np-mode" role="tablist" style="--n: 2" hidden>
+          <i class="period-pill"></i>
+          <button role="tab" data-mode="song">Song</button>
+          <button role="tab" data-mode="video">Video</button>
+        </div>
         <div class="now">
           <div class="now-art" id="now-art"></div>
           <div class="now-text">
