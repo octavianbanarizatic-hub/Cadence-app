@@ -2497,56 +2497,14 @@
 .phone .player.expanded .now-art {
   grid-area: art;
   justify-self: center;
-  width: min(100%, 46vh);
+  /* Shorter screens (a Galaxy S24, a three-button navigation bar) get a
+     smaller cover, so the icon row still ends on the first screen; 488px is
+     what the rest of it takes with a two-line title. */
+  width: min(100%, 46vh, max(200px, calc(100vh - 488px - var(--nav-bottom))));
   height: auto;
   aspect-ratio: 1;
   border-radius: 20px;
   box-shadow: 0 28px 70px oklch(0.06 0.02 280 / 0.75);
-}
-
-/* Video mode: the Song | Video switch above the cover, only in the full-screen player. */
-:is(.phone, .desktop) .player .np-mode {
-  display: none;
-}
-
-.phone .player.expanded .np-mode:not([hidden]) {
-  display: grid;
-  flex: none;
-  align-self: center;
-  width: 196px;
-  margin: 0 0 clamp(12px, 2.5vh, 24px);
-}
-
-.phone .player.expanded .np-mode button {
-  height: 34px;
-}
-
-/* The video takes the cover's place, as wide as the screen allows. */
-.phone .player.expanded .now-art.video {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  background: black;
-}
-
-.phone .now-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: black;
-  opacity: 0;
-  transition: opacity 0.3s ease-out;
-}
-
-.phone .now-video.on {
-  opacity: 1;
-}
-
-.phone .player:not(.expanded) .now-video {
-  display: none;
 }
 
 .phone .player.expanded .now-text {

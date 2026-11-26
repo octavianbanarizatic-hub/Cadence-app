@@ -235,7 +235,6 @@ pub fn run() {
             commands::artist,
             commands::explore,
             commands::mood,
-            commands::music_video,
             commands::recommendations,
             commands::playlists_list,
             commands::playlist_get,

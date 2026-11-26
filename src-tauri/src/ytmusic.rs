@@ -15,7 +15,6 @@ const CLIENT_VERSION: &str = "1.20251020.01.00";
 const SONGS_FILTER: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
 const ARTISTS_FILTER: &str = "EgWKAQIgAWoMEA4QChADEAQQCRAF";
 const ALBUMS_FILTER: &str = "EgWKAQIYAWoMEA4QChADEAQQCRAF";
-const VIDEOS_FILTER: &str = "EgWKAQIQAWoMEA4QChADEAQQCRAF";
 
 /// One call to the API (`search`, `browse`, `next`…), as music.youtube.com
 /// makes it: `body` gets the web client's context added.
@@ -590,52 +589,6 @@ fn parse_artist(id: &str, resp: &Value) -> Option<Artist> {
     })
 }
 
-// ---- music videos -------------------------------------------------------------------
-
-/// A song's official music video, found with YouTube Music's video search:
-/// without an account its `next` endpoint doesn't say which video goes with a song.
-pub async fn music_video(http: &reqwest::Client, title: &str, artist: &str) -> Result<Option<String>, String> {
-    let resp = call(http, "search", json!({ "query": format!("{title} {artist}"), "params": VIDEOS_FILTER })).await?;
-    Ok(pick_music_video(&resp, title, artist))
-}
-
-/// Letters and digits only, lowercase: "Beyoncé" matches "BEYONCÉ", "Harder, Better" "harder better".
-fn plain(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
-}
-
-/// A title without what follows it in brackets ("(feat. …)", "(Official Video)",
-/// "[4K]") or an "Artist - " before it.
-fn bare_title(title: &str) -> String {
-    let cut = [" (", " ["].iter().filter_map(|p| title.find(p)).min();
-    let title = cut.map_or(title, |i| &title[..i]);
-    plain(title.rsplit(" - ").next().unwrap_or(title))
-}
-
-/// The first official video (not a fan upload) whose line names the song's
-/// first artist and whose title is the song's ("Love" isn't "Lovely").
-fn pick_music_video(resp: &Value, title: &str, artist: &str) -> Option<String> {
-    let name = bare_title(title);
-    let by = plain(artist.split(',').next().unwrap_or(artist));
-    if name.is_empty() || by.is_empty() {
-        return None;
-    }
-    let mut rows = Vec::new();
-    collect(resp, "musicResponsiveListItemRenderer", &mut rows);
-    rows.into_iter().take(8).find_map(|r| {
-        let mut kinds = Vec::new();
-        collect(r, "musicVideoType", &mut kinds);
-        if kinds.first()?.as_str()? != "MUSIC_VIDEO_TYPE_OMV" {
-            return None;
-        }
-        let cols: Vec<String> = r["flexColumns"].as_array()?.iter().map(|c| text(&c["musicResponsiveListItemFlexColumnRenderer"]["text"])).collect();
-        // "Blinding Lights (Official Video)" and "The Weeknd • 1B views • 4:23".
-        let line = plain(cols.get(1)?.split(" • ").next()?);
-        let id = r["playlistItemData"]["videoId"].as_str().or_else(|| find_video_id(r))?;
-        (bare_title(cols.first()?) == name && line.contains(&by) && valid_video_id(id)).then(|| id.to_string())
-    })
-}
-
 // ---- Explore: charts, new releases, moods and genres ------------------------------
 
 /// A playlist or album on a shelf: a chart, a new release, one of a mood's playlists.
@@ -1142,36 +1095,5 @@ mod tests {
         assert_eq!(m.len(), 1);
         assert_eq!((m[0].title.as_str(), m[0].params.as_str(), m[0].color.as_deref()), ("Chill", "ggMPOg1uX1JOQWZFeDByc2Jm", Some("#a4c5ff")));
         assert!(!valid_params("a b"));
-    }
-    #[test]
-    fn picks_the_official_music_video() {
-        let row = |id: &str, kind: &str, title: &str, line: &str| json!({ "musicResponsiveListItemRenderer": {
-            "playlistItemData": { "videoId": id },
-            "overlay": { "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": { "playNavigationEndpoint": { "watchEndpoint": {
-                "videoId": id,
-                "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": { "musicVideoType": kind }}
-            }}}}}},
-            "flexColumns": [
-                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": title }] }}},
-                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": line }] }}}
-            ]
-        }});
-        // Real results for "Levitating Dua Lipa": fan uploads first.
-        let resp = json!({ "contents": [
-            row("g9UsdYKFz4Q", "MUSIC_VIDEO_TYPE_UGC", "Dua Lipa - Levitating (Lyrics) ft. DaBaby", "Margaret • 10 views • 18:36"),
-            row("xxxxxxxxxxx", "MUSIC_VIDEO_TYPE_OMV", "Physical", "Dua Lipa • 400M views • 3:14"),
-            row("TUVcZfQe-Kw", "MUSIC_VIDEO_TYPE_OMV", "Levitating (feat. DaBaby)", "Dua Lipa • 1.1B views • 3:51"),
-        ]});
-        assert_eq!(pick_music_video(&resp, "Levitating (feat. DaBaby)", "Dua Lipa, DaBaby").as_deref(), Some("TUVcZfQe-Kw"));
-        // Another artist's official video of a song with the same name is not it.
-        assert_eq!(pick_music_video(&resp, "Levitating", "Someone Else"), None);
-        let hbfs = json!({ "contents": [row("gAjR4_CbPpQ", "MUSIC_VIDEO_TYPE_OMV", "Harder, Better, Faster, Stronger", "Daft Punk • 164M views • 3:43")] });
-        assert_eq!(pick_music_video(&hbfs, "Harder, Better, Faster, Stronger", "Daft Punk").as_deref(), Some("gAjR4_CbPpQ"));
-        // A longer title that starts with the song's is another song.
-        let love = json!({ "contents": [
-            row("aaaaaaaaaaa", "MUSIC_VIDEO_TYPE_OMV", "Lovely (Official Video)", "Someone • 2M views • 3:20"),
-            row("bbbbbbbbbbb", "MUSIC_VIDEO_TYPE_OMV", "Someone - Love [4K]", "Someone • 1M views • 3:01"),
-        ]});
-        assert_eq!(pick_music_video(&love, "Love", "Someone").as_deref(), Some("bbbbbbbbbbb"));
     }
 }
